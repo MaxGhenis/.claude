@@ -24,9 +24,11 @@ plugins/repos/
 plugins/cache/
 plugins/marketplaces/
 
-# Settings with secrets
-settings.json
+# Settings (local overrides only - main settings.json is now safe to commit)
 settings.local.json
+
+# Unencrypted secrets (never commit)
+secrets.env
 
 # Plugin metadata (auto-generated)
 plugins/config.json
