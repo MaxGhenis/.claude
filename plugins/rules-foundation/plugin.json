@@ -1,0 +1,8 @@
+{
+  "name": "rules-foundation",
+  "version": "0.3.0",
+  "description": "Rules Foundation: atlas (legal archive), RAC (rules as code), encoding pipeline, and development tools",
+  "commands": "commands/",
+  "skills": "skills/",
+  "agents": "agents/"
+}

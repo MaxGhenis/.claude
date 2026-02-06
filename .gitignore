@@ -1,0 +1,46 @@
+# Ephemeral / large / sensitive
+__store.db
+history.jsonl
+stats-cache.json
+debug/
+file-history/
+session-env/
+shell-snapshots/
+paste-cache/
+image-cache/
+cache/
+todos/
+tasks/
+plans/
+telemetry/
+statsig/
+downloads/
+ide/
+chrome/
+projects/
+
+# Plugin repos (large, tracked elsewhere)
+plugins/repos/
+plugins/cache/
+plugins/marketplaces/
+
+# Settings with secrets
+settings.json
+settings.local.json
+
+# Plugin metadata (auto-generated)
+plugins/config.json
+plugins/known_marketplaces.json
+plugins/installed_plugins.json
+plugins/install-counts-cache.json
+
+# Personal info (has PII)
+personal-info.md
+
+# Legacy / unused (already deleted, keep ignored in case recreated)
+/agent_tools_config.md
+/README-agents.md
+/agents/
+/output-styles/
+/slash_commands/
+/mcp-servers/
