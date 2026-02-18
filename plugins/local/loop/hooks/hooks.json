@@ -1,0 +1,17 @@
+{
+  "description": "Keep-going hook - blocks stopping until criteria met",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if there is a .claude/loop.md file in the current project. If it exists, read it and check if ALL completion criteria listed are satisfied. Only return 'approve' if ALL criteria are met or if the file doesn't exist. Return 'block' with a reason listing which criteria remain incomplete.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

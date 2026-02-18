@@ -1,0 +1,6 @@
+{
+  "name": "loop",
+  "version": "0.1.0",
+  "description": "Keep working until completion criteria are met",
+  "hooks": "hooks/hooks.json"
+}

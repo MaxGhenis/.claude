@@ -2,31 +2,50 @@
 *.jsonl
 projects/
 
-# Session/runtime data
+# Ephemeral / large / sensitive
 __store.db
+stats-cache.json
 debug/
 file-history/
-plans/
 session-env/
 shell-snapshots/
-stats-cache.json
-statsig/
-tasks/
-teams/
-telemetry/
-todos/
+paste-cache/
+image-cache/
 cache/
-chrome/
+todos/
+tasks/
+plans/
+telemetry/
+statsig/
 downloads/
 ide/
+chrome/
+teams/
 .search_cache/
 
-# Media/clipboard
-image-cache/
-paste-cache/
+# Plugin repos (large, tracked elsewhere)
+plugins/repos/
+plugins/cache/
+plugins/marketplaces/
 
-# Personal info
+# Plugin metadata (auto-generated)
+plugins/config.json
+plugins/known_marketplaces.json
+plugins/installed_plugins.json
+plugins/install-counts-cache.json
+
+# Settings (local overrides only)
+settings.local.json
+
+# Unencrypted secrets (never commit)
+secrets.env
+
+# Personal info (has PII)
 personal-info.md
 
-# Plugins (installed separately)
-plugins/
+# Legacy / unused
+/agent_tools_config.md
+/README-agents.md
+/output-styles/
+/slash_commands/
+/mcp-servers/

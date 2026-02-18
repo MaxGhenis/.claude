@@ -1,7 +1,120 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "mcpServers": {
+    "gmail": {
+      "command": "/bin/bash",
+      "args": ["-c", "source ~/.nvm/nvm.sh && nvm use 20 > /dev/null && node /Users/maxghenis/Github/Gmail-MCP-Server/dist/index.js"]
+    },
+    "google-ads": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/maxghenis/tmp/google-ads-mcp-complete",
+        "python",
+        "-m",
+        "google_ads_mcp_complete.fastmcp_server"
+      ],
+      "env": {
+        "GOOGLE_ADS_CONFIG_PATH": "/Users/maxghenis/.config/google-ads-mcp/config.json"
+      }
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest"]
+    },
+    "android-sms": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/maxghenis/android-sms-mcp",
+        "python",
+        "-m",
+        "android_sms_mcp.mcp_server"
+      ],
+      "env": {
+        "SMS_GATEWAY_HOST": "${SMS_GATEWAY_HOST}",
+        "SMS_GATEWAY_USER": "${SMS_GATEWAY_USER}",
+        "SMS_GATEWAY_PASS": "${SMS_GATEWAY_PASS}"
+      }
+    }
+  },
+  "env": {
+    "CALLME_PHONE_PROVIDER": "telnyx",
+    "CALLME_PHONE_ACCOUNT_SID": "${CALLME_PHONE_ACCOUNT_SID}",
+    "CALLME_PHONE_AUTH_TOKEN": "${CALLME_PHONE_AUTH_TOKEN}",
+    "CALLME_PHONE_NUMBER": "${CALLME_PHONE_NUMBER}",
+    "CALLME_USER_PHONE_NUMBER": "${CALLME_USER_PHONE_NUMBER}",
+    "CALLME_OPENAI_API_KEY": "${OPENAI_API_KEY}",
+    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}"
+  },
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Edit(**)",
+      "Write",
+      "Write(**)",
+      "Read",
+      "Read(**)",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "NotebookEdit",
+      "Skill",
+      "Task",
+      "Task(*)",
+      "mcp__slack__*",
+      "mcp__whatsapp__*",
+      "mcp__claude-in-chrome__*",
+      "mcp__callme__*",
+      "mcp__granola__*",
+      "mcp__gmail__*",
+      "mcp__google-ads__*",
+      "mcp__chrome-devtools__*",
+      "mcp__android-sms__*"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/enforce-package-managers.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [],
+    "SessionStart": []
+  },
   "enabledPlugins": {
+    "cosilico@cosilico": true,
+    "farness@local": false,
+    "farness@maxghenis-plugins": false,
+    "frontend-design@claude-code-plugins": true,
+    "plugin-dev@claude-code-plugins": true,
+    "academic-referee@maxghenis-plugins": true,
+    "swift-lsp@claude-plugins-official": true,
+    "callme@callme": true,
+    "code-simplifier@claude-plugins-official": true,
+    "complete@policyengine-claude": true,
     "rules-foundation@rules-foundation": true,
     "frontend-design@claude-plugins-official": true
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "feedbackSurveyState": {
+    "lastShownTime": 1754133980561
+  },
+  "pluginSources": {
+    "local": "/Users/maxghenis/farness",
+    "namecast": "/Users/maxghenis/Projects/namecast",
+    "callme": "/Users/maxghenis/call-me/.claude-plugin",
+    "rules-foundation": "/Users/maxghenis/.claude/plugins/rules-foundation"
+  }
 }
