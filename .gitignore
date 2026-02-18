@@ -1,0 +1,32 @@
+# Conversation data & transcripts
+*.jsonl
+projects/
+
+# Session/runtime data
+__store.db
+debug/
+file-history/
+plans/
+session-env/
+shell-snapshots/
+stats-cache.json
+statsig/
+tasks/
+teams/
+telemetry/
+todos/
+cache/
+chrome/
+downloads/
+ide/
+.search_cache/
+
+# Media/clipboard
+image-cache/
+paste-cache/
+
+# Personal info
+personal-info.md
+
+# Plugins (installed separately)
+plugins/

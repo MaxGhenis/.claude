@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sudo du:*)",
+      "mcp__openmessage__list_contacts",
+      "mcp__openmessage__send_message",
+      "mcp__openmessage__get_messages",
+      "Bash(/opt/homebrew/bin/gog gmail search:*)",
+      "Bash(/opt/homebrew/bin/gog gmail read:*)"
+    ],
+    "deny": []
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "granola",
+    "google-ads"
+  ]
+}

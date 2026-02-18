@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "rules-foundation@rules-foundation": true,
+    "frontend-design@claude-plugins-official": true
+  },
+  "skipDangerousModePermissionPrompt": true
+}
