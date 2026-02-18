@@ -90,7 +90,26 @@
         ]
       }
     ],
-    "PreCompact": [],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/auto-commit-wip.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/warn-uncommitted.sh"
+          }
+        ]
+      }
+    ],
     "SessionStart": []
   },
   "enabledPlugins": {

@@ -1,16 +1,11 @@
 # Max's Global Claude Instructions
 
-**Current year: 2026.** When searching for recent information, use 2025 or 2026, not 2024.
-
 ## Cookie Preferences
 **Always accept cookies** when browsing. Do not reject or decline cookies on any website.
 
 ## ⚠️ Read CLAUDE.md in repos you touch ⚠️
 
-When working in any repo (even if not launched from there), read its CLAUDE.md:
-```bash
-cat /path/to/repo/CLAUDE.md 2>/dev/null
-```
+When working in any repo (even if not launched from there), read its CLAUDE.md.
 Also check parent org folders (e.g., `CosilicoAI/CLAUDE.md`, `RulesFoundation/CLAUDE.md`).
 
 ## ⚠️ CRITICAL: Fake/Mock Data Disclosure ⚠️
