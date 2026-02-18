@@ -8,29 +8,14 @@
 When working in any repo (even if not launched from there), read its CLAUDE.md.
 Also check parent org folders (e.g., `CosilicoAI/CLAUDE.md`, `RulesFoundation/CLAUDE.md`).
 
-## ⚠️ CRITICAL: Fake/Mock Data Disclosure ⚠️
-
-**NEVER present fake, mock, placeholder, or hardcoded data without EXTREMELY EXPLICIT warnings.**
-
-When showing ANY data that is not real/live:
-1. **In UI**: Add prominent banner like "⚠️ MOCK DATA - NOT REAL" with bright warning colors
-2. **In conversation**: Lead with "**NOTE: This is fake/example data**" before showing it
-3. **In code**: Add comments like `// MOCK DATA - REPLACE WITH REAL SOURCE` and name variables clearly (`MOCK_DATA`, `PLACEHOLDER_VALUES`, etc.)
-4. **Never** let fake data look indistinguishable from real data
-5. **Always** explain the data source - is it hardcoded? from a DB? from an API?
-
-This applies to: dashboards, tables, charts, example outputs, demo pages, test fixtures shown to users.
+## Fake/mock data disclosure
+NEVER present fake, mock, or placeholder data without extremely explicit warnings in both the UI (prominent banner) and conversation (lead with a note). Name variables clearly (MOCK_DATA, PLACEHOLDER_VALUES). Always state the data source.
 
 ---
 
 ## Development Workflow
 
-### Test-Driven Development (TDD)
-Always follow TDD when writing code:
-1. **Red**: Write a failing test first
-2. **Green**: Write minimal code to make the test pass
-3. **Refactor**: Clean up while keeping tests green
-
+### Test frameworks
 For JavaScript/TypeScript, use Vitest. For Python, use pytest.
 
 ### Task management
@@ -50,31 +35,10 @@ When spawning subagents with the Task tool:
 - **Super simple tasks**: Use `haiku`
 - **Never use `sonnet`** — always prefer opus or haiku
 
-## Package Manager Preference
-
-Always use **Bun** instead of npm/yarn for JavaScript/TypeScript projects:
-- `bun install` instead of `npm install`
-- `bun run dev` instead of `npm run dev`
-- `bun add <package>` instead of `npm install <package>`
-- `bun test` for running Vitest tests
-- `bunx` instead of `npx`
-
 ## Writing Style
 
-### Sentence Case for Headings
-**Always use sentence case for headings**, not title case. This follows the modern standard used by Apple, Google, Slack, Notion, Basecamp, GOV.UK, and most major tech companies.
-
-- ✅ **Sentence case**: "What PolicyEngine does" (only first word capitalized)
-- ❌ **Title case**: "What PolicyEngine Does" (every major word capitalized)
-
-Proper nouns and acronyms remain capitalized: "How AI affects income distribution"
-
-This applies to:
-- Website headings and subheadings
-- Documentation titles
-- Button labels and UI text
-- Blog post titles
-- README sections
+### Sentence case for headings
+Always use sentence case (only capitalize first word and proper nouns), not title case. Applies to all headings, titles, buttons, and UI text.
 
 ## Frontend Design
 
