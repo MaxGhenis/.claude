@@ -40,10 +40,10 @@ tmux split-window -t c:1 "command here"
 ~/bin/cc session-name
 
 # Manual with name:
-tmux split-window -d -t c:1 -c ~ "claude --resume SESSION_ID"
-pane=$(tmux list-panes -t c:1 -F '#{pane_index}' | tail -1)
-tmux select-pane -t c:1.$pane -T "name"
-tmux select-layout -t c:1 tiled
+pane=$(tmux split-window -c ~ -P -F '#{pane_index}')
+tmux send-keys -t "$pane" "claude --resume SESSION_ID" Enter
+tmux select-pane -t "$pane" -T "name"
+tmux select-layout tiled
 ```
 
 ### Sending keys to a verified-free pane
