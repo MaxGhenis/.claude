@@ -23,21 +23,9 @@
       "command": "npx",
       "args": ["chrome-devtools-mcp@latest"]
     },
-    "android-sms": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/maxghenis/android-sms-mcp",
-        "python",
-        "-m",
-        "android_sms_mcp.mcp_server"
-      ],
-      "env": {
-        "SMS_GATEWAY_HOST": "${SMS_GATEWAY_HOST}",
-        "SMS_GATEWAY_USER": "${SMS_GATEWAY_USER}",
-        "SMS_GATEWAY_PASS": "${SMS_GATEWAY_PASS}"
-      }
+    "openmessage": {
+      "type": "sse",
+      "url": "http://localhost:7007/mcp/sse"
     }
   },
   "env": {
@@ -47,8 +35,10 @@
     "CALLME_PHONE_NUMBER": "${CALLME_PHONE_NUMBER}",
     "CALLME_USER_PHONE_NUMBER": "${CALLME_USER_PHONE_NUMBER}",
     "CALLME_OPENAI_API_KEY": "${OPENAI_API_KEY}",
-    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}"
+    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
+  "teammateMode": "in-process",
   "permissions": {
     "allow": [
       "Bash",
@@ -74,7 +64,7 @@
       "mcp__gmail__*",
       "mcp__google-ads__*",
       "mcp__chrome-devtools__*",
-      "mcp__android-sms__*"
+      "mcp__openmessage__*"
     ],
     "defaultMode": "bypassPermissions"
   },
@@ -106,6 +96,17 @@
           {
             "type": "command",
             "command": "/Users/maxghenis/.claude/hooks/warn-uncommitted.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/sync-setup-page.sh"
           }
         ]
       }
