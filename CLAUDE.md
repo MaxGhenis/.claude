@@ -3,6 +3,14 @@
 ## Cookie Preferences
 **Always accept cookies** when browsing. Do not reject or decline cookies on any website.
 
+## APIs over browser automation
+**Always prefer APIs over browser automation** when an API is available (e.g., Xero API, Google API, GitHub API). APIs are faster, more reliable, and don't depend on login sessions or Chrome profiles. Only fall back to browser automation when no API exists.
+
+When browser automation is needed, **always use claude-in-chrome (`mcp__claude-in-chrome__*`) first**. NEVER use `mcp__chrome-devtools__*` unless claude-in-chrome is completely unavailable and you've exhausted all options to fix it. The chrome-devtools MCP launches a separate Chrome profile that can't access the user's logged-in sessions, tabs, or extensions.
+
+## Autonomy preferences
+**Do things yourself instead of asking Max to do them.** If a task requires visiting a website, logging in, copying a key, filling out a form, etc. — use browser automation or CLI tools to do it. Only ask Max as a last resort when tools are genuinely unavailable. If credentials are needed, check the keychain (`manage-secret.sh`) first, then try browser automation to get them, before asking.
+
 ## ⚠️ Read CLAUDE.md in repos you touch ⚠️
 
 When working in any repo (even if not launched from there), read its CLAUDE.md.
@@ -10,6 +18,13 @@ Also check parent org folders (e.g., `CosilicoAI/CLAUDE.md`, `RulesFoundation/CL
 
 ## Fake/mock data disclosure
 NEVER present fake, mock, or placeholder data without extremely explicit warnings in both the UI (prominent banner) and conversation (lead with a note). Name variables clearly (MOCK_DATA, PLACEHOLDER_VALUES). Always state the data source.
+
+## PR readiness verification
+**NEVER tell the user a PR is ready until BOTH conditions are confirmed:**
+1. `gh pr checks` exits 0 (all CI checks pass) — on the LATEST run, not a stale one
+2. `gh pr view --json mergeable` shows `"mergeable":"MERGEABLE"` (no merge conflicts)
+
+Always check both after pushing. If either fails, fix the issue before reporting.
 
 ---
 
@@ -33,34 +48,32 @@ Use Claude Code's built-in Tasks (TaskCreate/TaskUpdate) for work tracking. For 
 When spawning subagents with the Task tool:
 - **Default (most things)**: Use `opus` (or omit model param to inherit)
 - **Super simple tasks**: Use `haiku`
-- **Never use `sonnet`** — always prefer opus or haiku
 
 ## Writing Style
 
 ### Sentence case for headings
 Always use sentence case (only capitalize first word and proper nouns), not title case. Applies to all headings, titles, buttons, and UI text.
 
+## Package manager preferences
+- **JavaScript/TypeScript**: Use `bun` (not npm/npx). Use `bunx` instead of `npx`.
+- **Python**: Use `uv` (not pip). Use `uv pip install` / `uv run` / `uvx` instead of `pip install` / `python -m` / `pipx`.
+
+## Technology preferences
+**Never use Streamlit.** For Python web apps, prefer other frameworks.
+
+### Icons
+**Never use emoji as icons** in code or UI. Use `@tabler/icons-react` (the PolicyEngine standard) or equivalent proper icon libraries.
+
 ## Frontend Design
-
-### General Projects
-When creating new frontend designs, invoke the **frontend-design** skill:
-```
-Use Skill tool with skill: "frontend-design:frontend-design"
-```
-This creates distinctive, production-grade interfaces that avoid generic AI aesthetics.
-
-### PolicyEngine projects
-For PolicyEngine products, use the **policyengine-design-system** skill (in policyengine-claude plugin):
-```
-Use Skill tool with skill: "complete:policyengine-design-skill"
-```
+- **General projects**: Use `frontend-design:frontend-design` skill
+- **PolicyEngine projects**: Use `complete:policyengine-design-skill` skill
 
 ## Google API, Gmail, and Calendar
 
 Use `/google-api` skill for credentials/auth code, `/gmail` skill for email patterns.
 
 **Accounts:** max@policyengine.org (work) and mghenis@gmail.com (personal). Tokens in `~/.config/policyengine/`.
-**IMAP accounts:** policyengine, personal, hivesight (app passwords in `~/.zshrc`).
+**IMAP accounts:** policyengine, personal, hivesight (app passwords in macOS Keychain via `load-secrets.sh`).
 **Always send emails as HTML** (plain text renders in a narrow column in Gmail).
 
 ### Quick access via gog CLI

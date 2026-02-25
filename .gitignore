@@ -40,6 +40,9 @@ settings.local.json
 # Unencrypted secrets (never commit)
 secrets.env
 
+# Assets with PII (signature images, etc.)
+assets/
+
 # Personal info (has PII)
 personal-info.md
 

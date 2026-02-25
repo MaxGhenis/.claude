@@ -1,6 +1,8 @@
 {
   "name": "max-productivity",
-  "version": "0.1.0",
-  "description": "Max's personal productivity commands: briefing, inbox, PRs, meetings",
-  "commands": "./commands"
+  "version": "0.2.0",
+  "description": "Max's personal productivity commands, domain-specific reference skills, and maintenance agents",
+  "commands": "./commands",
+  "skills": "./skills",
+  "agents": "./agents"
 }

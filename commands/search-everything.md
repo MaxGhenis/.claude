@@ -1,5 +1,5 @@
 ---
-description: Cross-platform search across local files, WhatsApp, Gmail, Granola meetings, and browser. Use when looking for a specific piece of information that could be anywhere.
+description: Cross-platform search across local files, SMS/texts (OpenMessage), WhatsApp, Gmail, Granola meetings, and browser. Use when looking for a specific piece of information that could be anywhere.
 args: "<search query>"
 ---
 
@@ -19,14 +19,22 @@ grep -r "$ARGUMENTS" ~/Documents/ ~/Desktop/ ~/Downloads/ --include="*.txt" --in
 
 Also try Glob/Grep tools for structured search across files.
 
-### 2. WhatsApp messages
+### 2. SMS/texts (OpenMessage)
+
+Search SMS/RCS/iMessage via OpenMessage MCP (load with `ToolSearch query: "+openmessage"` first):
+```
+mcp__openmessage__search_messages(query="$ARGUMENTS")
+```
+Or HTTP fallback: `curl -s 'http://localhost:7007/api/search?q=$ARGUMENTS'`
+
+### 3. WhatsApp messages
 
 Search WhatsApp via MCP:
 ```
 mcp__whatsapp__list_messages(query="$ARGUMENTS", limit=10)
 ```
 
-### 3. Gmail (all 3 accounts)
+### 4. Gmail (all 3 accounts)
 
 Search all accounts via IMAP using the `/gmail` skill pattern. Use `X-GM-RAW` for Gmail search syntax:
 
@@ -42,21 +50,21 @@ Or use gog for quick search:
 /opt/homebrew/bin/gog gmail search "$ARGUMENTS" --max 5 --account mghenis@gmail.com
 ```
 
-### 4. Granola meeting notes
+### 5. Granola meeting notes
 
 Search meeting transcripts and notes:
 ```
 mcp__granola__search_meetings(query="$ARGUMENTS", from_date="90d")
 ```
 
-### 5. Slack
+### 6. Slack
 
 Search Slack workspace messages if relevant:
 ```
 mcp__slack__slack_get_channel_history (check relevant channels)
 ```
 
-### 6. Browser (last resort)
+### 7. Browser (last resort)
 
 Use Chrome automation to search the web if the information isn't found locally.
 

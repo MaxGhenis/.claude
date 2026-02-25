@@ -1,33 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "mcpServers": {
-    "gmail": {
-      "command": "/bin/bash",
-      "args": ["-c", "source ~/.nvm/nvm.sh && nvm use 20 > /dev/null && node /Users/maxghenis/Github/Gmail-MCP-Server/dist/index.js"]
-    },
-    "google-ads": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/maxghenis/tmp/google-ads-mcp-complete",
-        "python",
-        "-m",
-        "google_ads_mcp_complete.fastmcp_server"
-      ],
-      "env": {
-        "GOOGLE_ADS_CONFIG_PATH": "/Users/maxghenis/.config/google-ads-mcp/config.json"
-      }
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["chrome-devtools-mcp@latest"]
-    },
-    "openmessage": {
-      "type": "sse",
-      "url": "http://localhost:7007/mcp/sse"
-    }
-  },
   "env": {
     "CALLME_PHONE_PROVIDER": "telnyx",
     "CALLME_PHONE_ACCOUNT_SID": "${CALLME_PHONE_ACCOUNT_SID}",
@@ -35,10 +7,8 @@
     "CALLME_PHONE_NUMBER": "${CALLME_PHONE_NUMBER}",
     "CALLME_USER_PHONE_NUMBER": "${CALLME_USER_PHONE_NUMBER}",
     "CALLME_OPENAI_API_KEY": "${OPENAI_API_KEY}",
-    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}",
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}"
   },
-  "teammateMode": "in-process",
   "permissions": {
     "allow": [
       "Bash",
@@ -110,13 +80,10 @@
           }
         ]
       }
-    ],
-    "SessionStart": []
+    ]
   },
   "enabledPlugins": {
     "cosilico@cosilico": true,
-    "farness@local": false,
-    "farness@maxghenis-plugins": false,
     "frontend-design@claude-code-plugins": true,
     "plugin-dev@claude-code-plugins": true,
     "academic-referee@maxghenis-plugins": true,
@@ -124,15 +91,47 @@
     "callme@callme": true,
     "code-simplifier@claude-plugins-official": true,
     "complete@policyengine-claude": true,
-    "rules-foundation@rules-foundation": true,
-    "frontend-design@claude-plugins-official": true
+    "rules-foundation@rules-foundation": true
   },
   "skipDangerousModePermissionPrompt": true,
+  "mcpServers": {
+    "gmail": {
+      "command": "/bin/bash",
+      "args": [
+        "-c",
+        "source ~/.nvm/nvm.sh && nvm use 20 > /dev/null && node /Users/maxghenis/Github/Gmail-MCP-Server/dist/index.js"
+      ]
+    },
+    "google-ads": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/maxghenis/tmp/google-ads-mcp-complete",
+        "python",
+        "-m",
+        "google_ads_mcp_complete.fastmcp_server"
+      ],
+      "env": {
+        "GOOGLE_ADS_CONFIG_PATH": "/Users/maxghenis/.config/google-ads-mcp/config.json"
+      }
+    },
+    "chrome-devtools": {
+      "command": "bunx",
+      "args": [
+        "chrome-devtools-mcp@latest"
+      ]
+    },
+    "openmessage": {
+      "type": "sse",
+      "url": "http://localhost:7007/mcp/sse"
+    }
+  },
+  "teammateMode": "in-process",
   "feedbackSurveyState": {
     "lastShownTime": 1754133980561
   },
   "pluginSources": {
-    "local": "/Users/maxghenis/farness",
     "namecast": "/Users/maxghenis/Projects/namecast",
     "callme": "/Users/maxghenis/call-me/.claude-plugin",
     "rules-foundation": "/Users/maxghenis/.claude/plugins/rules-foundation"
