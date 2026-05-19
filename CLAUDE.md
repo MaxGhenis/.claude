@@ -26,6 +26,44 @@ NEVER present fake, mock, or placeholder data without extremely explicit warning
 
 Always check both after pushing. If either fails, fix the issue before reporting.
 
+## PR-backed changes
+**All substantive code, config, CI, documentation, and generated-artifact changes must go through a pull request.**
+
+Default workflow:
+1. `git fetch origin && git checkout -b <branch> origin/main` (or the repo's default branch).
+2. Commit only the intended files.
+3. Push the branch and open a PR.
+4. Wait for the latest CI run and mergeability check before saying it is ready.
+
+Do not commit on or push directly to protected branches (`main`, `master`, `develop`, `trunk`, `production`, `prod`, `gh-pages`). If the user says "push this", interpret that as "push a branch and open/update a PR" unless they explicitly ask for a direct protected-branch push.
+
+Do not leave meaningful fixes as local dirty state. If a local patch affects a reported result, reproduction, or teammate workflow, get it onto a branch/PR before treating the result as reproducible.
+
+For Axiom repos, this rule is strict: encoder, oracle, rules-engine, corpus, website, and RuleSpec changes should be PR-backed. Never hand-edit generated RuleSpec as the final workflow; fix the generator/encoder path and publish that change by PR.
+
+Prefer enforcing this at the repository level too: GitHub branch protection or rulesets should block direct pushes to the default branch and require PR checks for shared repos. Local hooks are a backstop, not the source of authority.
+
+## CI strategy
+Every PR should have an automated signal matched to the risk:
+- Code changes: run unit tests and lint/type/format checks.
+- CLI or workflow changes: include a fast smoke test in PR CI. Scheduled or `workflow_dispatch` workflows also need a PR-triggered validation path for their config/entry point.
+- Generated outputs: CI should verify they can be regenerated from source, or the PR should document the exact generation command and source revision.
+- Docs-only changes: lightweight lint/link/build checks are enough when available.
+
+When adding a new CI workflow, do not rely only on a schedule or manual dispatch. Add at least one pull-request check that validates the workflow's scripts, registry, or configuration without requiring the full expensive job.
+
+For shared repos, make the expected checks required in branch protection/rulesets once they are stable. If a PR has no new CI after a push, check mergeability first with `gh pr view <pr> --json mergeStateStatus,mergeable` before assuming GitHub Actions failed to trigger.
+
+## Changelogs and release notes
+Add release notes only when a change affects users, public APIs, CLI behavior, generated artifacts, deployment/operations, or published package behavior.
+
+Use the repo's existing changelog system. If none exists:
+- Python libraries/packages: prefer Towncrier (`changelog.d/`) when the package has releases or a `pyproject.toml` release process.
+- JavaScript/TypeScript packages: prefer Changesets when the package is versioned/published.
+- Apps, dashboards, infra, one-off scripts, and docs-only repos: use the PR body sections instead of adding changelog machinery.
+
+Do not introduce Towncrier or Changesets for a one-off internal repo unless the repo is clearly moving toward packaged releases. For Axiom shared tooling, prefer release-note fragments for `axiom-encode`, `axiom-oracles`, and other installable tools; for RuleSpec/generated corpus repos, document generation provenance in the PR body unless the repo already has a changelog convention.
+
 ---
 
 ## Development Workflow
