@@ -1,13 +1,16 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 3650,
   "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CALLME_PHONE_PROVIDER": "telnyx",
     "CALLME_PHONE_ACCOUNT_SID": "${CALLME_PHONE_ACCOUNT_SID}",
     "CALLME_PHONE_AUTH_TOKEN": "${CALLME_PHONE_AUTH_TOKEN}",
     "CALLME_PHONE_NUMBER": "${CALLME_PHONE_NUMBER}",
     "CALLME_USER_PHONE_NUMBER": "${CALLME_USER_PHONE_NUMBER}",
     "CALLME_OPENAI_API_KEY": "${OPENAI_API_KEY}",
-    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}"
+    "CALLME_NGROK_AUTHTOKEN": "${CALLME_NGROK_AUTHTOKEN}",
+    "CLAUDE_CODE_EFFORT_LEVEL": "max"
   },
   "permissions": {
     "allow": [
@@ -30,14 +33,16 @@
       "mcp__whatsapp__*",
       "mcp__claude-in-chrome__*",
       "mcp__callme__*",
-      "mcp__granola__*",
       "mcp__gmail__*",
       "mcp__google-ads__*",
-      "mcp__chrome-devtools__*",
-      "mcp__openmessage__*"
+      "mcp__openmessage__*",
+      "mcp__granola__*",
+      "mcp__granola-local__*"
     ],
+    "deny": [],
     "defaultMode": "bypassPermissions"
   },
+  "model": "claude-fable-5[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -46,6 +51,17 @@
           {
             "type": "command",
             "command": "/Users/maxghenis/.claude/hooks/enforce-package-managers.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"/Users/maxghenis/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
+            "timeout": 10,
+            "statusMessage": "Enriching with GitNexus graph context..."
           }
         ]
       }
@@ -66,6 +82,19 @@
           {
             "type": "command",
             "command": "/Users/maxghenis/.claude/hooks/warn-uncommitted.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/verify-should-work.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.agentboard/hook.sh"
           }
         ]
       }
@@ -80,21 +109,45 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/ensure-plugin-manifests.sh"
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {
     "cosilico@cosilico": true,
-    "frontend-design@claude-code-plugins": true,
     "plugin-dev@claude-code-plugins": true,
     "academic-referee@maxghenis-plugins": true,
-    "swift-lsp@claude-plugins-official": true,
-    "callme@callme": true,
     "code-simplifier@claude-plugins-official": true,
     "complete@policyengine-claude": true,
-    "rules-foundation@rules-foundation": true
+    "rules-foundation@rules-foundation": true,
+    "codex-bridge@maxghenis-plugins": true,
+    "vercel@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true
   },
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "xhigh",
+  "ultracode": true,
   "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "teammateMode": "in-process",
+  "remoteControlAtStartup": true,
+  "agentPushNotifEnabled": true,
   "mcpServers": {
+    "gitnexus": {
+      "command": "/opt/homebrew/bin/node",
+      "args": [
+        "/Users/maxghenis/.local/share/gitnexus/node_modules/.bin/gitnexus",
+        "mcp"
+      ]
+    },
     "gmail": {
       "command": "/bin/bash",
       "args": [
@@ -116,24 +169,26 @@
         "GOOGLE_ADS_CONFIG_PATH": "/Users/maxghenis/.config/google-ads-mcp/config.json"
       }
     },
-    "chrome-devtools": {
-      "command": "bunx",
-      "args": [
-        "chrome-devtools-mcp@latest"
-      ]
-    },
     "openmessage": {
       "type": "sse",
       "url": "http://localhost:7007/mcp/sse"
+    },
+    "granola-local": {
+      "command": "/Users/maxghenis/GranolaMCP/.venv/bin/python",
+      "args": [
+        "-m",
+        "granola_mcp.mcp"
+      ]
     }
   },
-  "teammateMode": "in-process",
   "feedbackSurveyState": {
     "lastShownTime": 1754133980561
   },
   "pluginSources": {
-    "namecast": "/Users/maxghenis/Projects/namecast",
-    "callme": "/Users/maxghenis/call-me/.claude-plugin",
-    "rules-foundation": "/Users/maxghenis/.claude/plugins/rules-foundation"
+    "callme": "/Users/maxghenis/call-me/.claude-plugin"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/maxghenis/chief-of-staff/ai-quota/bin/claude-statusline.py"
   }
 }
