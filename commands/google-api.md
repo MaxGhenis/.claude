@@ -10,8 +10,8 @@ OAuth credentials are set up for the `policyengine-apps` GCP project (ID: 578039
 
 | Account | Token file | Env var |
 |---------|-----------|---------|
-| max@policyengine.org (work) | `google-token.json` | `GOOGLE_TOKEN_FILE` |
-| mghenis@gmail.com (personal) | `google-token-personal.json` | `GOOGLE_PERSONAL_TOKEN_FILE` |
+| max@policyengine.org (work) | `google-token-policyengine.json` | `GOOGLE_TOKEN_POLICYENGINE` |
+| mghenis@gmail.com (personal) | `google-token-gmail.json` | `GOOGLE_TOKEN_GMAIL` |
 
 All tokens live in `~/.config/policyengine/`.
 
@@ -19,8 +19,8 @@ All tokens live in `~/.config/policyengine/`.
 
 ```bash
 export GOOGLE_CREDENTIALS_FILE="$HOME/.config/policyengine/google-credentials.json"
-export GOOGLE_TOKEN_FILE="$HOME/.config/policyengine/google-token.json"
-export GOOGLE_PERSONAL_TOKEN_FILE="$HOME/.config/policyengine/google-token-personal.json"
+export GOOGLE_TOKEN_POLICYENGINE="$HOME/.config/policyengine/google-token-policyengine.json"
+export GOOGLE_TOKEN_GMAIL="$HOME/.config/policyengine/google-token-gmail.json"
 ```
 
 ## Core authentication code
@@ -60,8 +60,8 @@ SCOPES = [
 CREDENTIALS_FILE = os.environ.get("GOOGLE_CREDENTIALS_FILE", os.path.expanduser("~/.config/policyengine/google-credentials.json"))
 
 TOKEN_PATHS = {
-    "work": os.environ.get("GOOGLE_TOKEN_FILE", os.path.expanduser("~/.config/policyengine/google-token.json")),
-    "personal": os.environ.get("GOOGLE_PERSONAL_TOKEN_FILE", os.path.expanduser("~/.config/policyengine/google-token-personal.json")),
+    "work": os.environ.get("GOOGLE_TOKEN_POLICYENGINE", os.path.expanduser("~/.config/policyengine/google-token-policyengine.json")),
+    "personal": os.environ.get("GOOGLE_TOKEN_GMAIL", os.path.expanduser("~/.config/policyengine/google-token-gmail.json")),
 }
 TOKEN_PATH = TOKEN_PATHS["work"]
 
@@ -89,8 +89,6 @@ def get_google_credentials(account="work"):
 **Work token** (max@policyengine.org): Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, Tasks, Profile.
 
 **Personal token** (mghenis@gmail.com): All of the above PLUS YouTube (read/write), Google Photos Library (read), Google Chat (messages + spaces read).
-
-Note: Google Keep API is enterprise-only (Workspace accounts) and cannot be used with personal Gmail.
 
 ## Example: Google Calendar API
 
@@ -143,11 +141,10 @@ def upload_html_as_doc(title, html_file_path):
 ## Dependencies
 
 ```bash
-pip install google-auth-oauthlib google-api-python-client
+uv pip install google-auth-oauthlib google-api-python-client
 ```
 
 ## Notes
 
 - Token auto-refreshes; no browser login needed after initial auth
-- Token has comprehensive scopes - no need to regenerate for most Google API tasks
-- GCP project: `policyengine-apps` (project ID: 578039519715)
+- Token has comprehensive scopes — no need to regenerate for most Google API tasks

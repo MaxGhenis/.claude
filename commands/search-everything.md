@@ -52,10 +52,7 @@ Or use gog for quick search:
 
 ### 5. Granola meeting notes
 
-Search meeting transcripts and notes:
-```
-mcp__granola__search_meetings(query="$ARGUMENTS", from_date="90d")
-```
+Granola access is disabled by default because the CLI can trigger repeated macOS keychain prompts. Ask Max before using Granola.
 
 ### 6. Slack
 

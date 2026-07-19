@@ -1,5 +1,6 @@
 #!/bin/bash
-# Manage secrets in macOS Keychain (service="claude-env").
+# Backward-compatible wrapper for Claude env-style secrets.
+# New storage is the dedicated agent keychain managed by `agent-secret`.
 #
 # Usage:
 #   manage-secret.sh set   VAR_NAME value    # Add or update a secret
@@ -9,7 +10,30 @@
 
 set -euo pipefail
 
-SERVICE="claude-env"
+NAMES_FILE="${HOME}/.claude/secret-names.txt"
+ACCOUNT="$(id -un)"
+OLD_SERVICE="claude-env"
+
+ensure_names_file() {
+  mkdir -p "$(dirname "$NAMES_FILE")"
+  touch "$NAMES_FILE"
+}
+
+add_name() {
+  local name="$1"
+  ensure_names_file
+  if ! grep -Fxq "$name" "$NAMES_FILE"; then
+    printf '%s\n' "$name" >> "$NAMES_FILE"
+  fi
+}
+
+remove_name() {
+  local name="$1"
+  if [ -f "$NAMES_FILE" ]; then
+    grep -Fxv "$name" "$NAMES_FILE" > "${NAMES_FILE}.tmp" || true
+    mv "${NAMES_FILE}.tmp" "$NAMES_FILE"
+  fi
+}
 
 usage() {
   echo "Usage:"
@@ -28,28 +52,40 @@ case "$cmd" in
     name="${1:-}"
     value="${2:-}"
     [ -z "$name" ] || [ -z "$value" ] && { echo "Error: set requires VAR_NAME and value"; usage; }
-    security delete-generic-password -s "$SERVICE" -a "$name" 2>/dev/null || true
-    security add-generic-password -s "$SERVICE" -a "$name" -w "$value" -U
+    printf '%s\n' "$value" | agent-secret set "$name" "$ACCOUNT" >/dev/null
+    add_name "$name"
     echo "Stored: $name"
     ;;
   get)
     name="${1:-}"
     [ -z "$name" ] && { echo "Error: get requires VAR_NAME"; usage; }
-    security find-generic-password -s "$SERVICE" -a "$name" -w 2>/dev/null || {
-      echo "Not found: $name" >&2; exit 1
-    }
+    agent-secret get "$name" "$ACCOUNT" 2>/dev/null ||
+      security find-generic-password -s "$OLD_SERVICE" -a "$name" -w 2>/dev/null || {
+        echo "Not found: $name" >&2
+        exit 1
+      }
     ;;
   del)
     name="${1:-}"
     [ -z "$name" ] && { echo "Error: del requires VAR_NAME"; usage; }
-    security delete-generic-password -s "$SERVICE" -a "$name" 2>/dev/null && echo "Deleted: $name" || {
-      echo "Not found: $name" >&2; exit 1
-    }
+    deleted=0
+    if agent-secret delete "$name" "$ACCOUNT" >/dev/null 2>&1; then
+      deleted=1
+    fi
+    security delete-generic-password -s "$OLD_SERVICE" -a "$name" 2>/dev/null || true
+    if [ "$deleted" -eq 1 ]; then
+      remove_name "$name"
+      echo "Deleted: $name"
+    else
+      echo "Not found: $name" >&2
+      exit 1
+    fi
     ;;
   list)
-    security dump-keychain 2>/dev/null \
-      | awk -F'"' '/svce.*claude-env/{found=1} found && /acct/{print $4; found=0}' \
-      | sort
+    {
+      [ -f "$NAMES_FILE" ] && cat "$NAMES_FILE"
+      agent-secret list 2>/dev/null | awk -F '\t' '{print $1}'
+    } | awk 'NF && !seen[$0]++' | sort
     ;;
   *)
     usage
