@@ -108,6 +108,27 @@
             "command": "/Users/maxghenis/.claude/hooks/sync-setup-page.sh"
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/check-model-downgrade.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/check-model-downgrade.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -121,12 +142,15 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/maxghenis/chief-of-staff/ai-quota/bin/claude-statusline.py"
+  },
   "enabledPlugins": {
-    "cosilico@cosilico": true,
     "plugin-dev@claude-code-plugins": true,
     "academic-referee@maxghenis-plugins": true,
-    "code-simplifier@claude-plugins-official": true,
-    "complete@policyengine-claude": true,
+    "code-simplifier@claude-plugins-official": false,
+    "complete@policyengine-claude": false,
     "rules-foundation@rules-foundation": true,
     "codex-bridge@maxghenis-plugins": true,
     "vercel@claude-plugins-official": true,
@@ -186,9 +210,5 @@
   },
   "pluginSources": {
     "callme": "/Users/maxghenis/call-me/.claude-plugin"
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "/Users/maxghenis/chief-of-staff/ai-quota/bin/claude-statusline.py"
   }
 }

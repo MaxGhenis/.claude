@@ -1,8 +1,13 @@
 ---
-description: Daily briefing and monthly task reminders
+description: Daily briefing and monthly task reminders (superseded by ~/chief-of-staff morning brief)
 ---
 
 # Daily briefing
+
+> **Superseded 2026-07-01** by the chief-of-staff system: `cos brief` (or the 7:30
+> launchd run) covers calendar + all four inboxes + GitHub + loops.md and absorbs
+> the monthly Anthropic-expense reminder below. This command remains for one-off
+> single-account use.
 
 Gets today's calendar, unread emails, and monthly task reminders (first week of month).
 

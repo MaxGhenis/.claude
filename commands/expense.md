@@ -4,6 +4,8 @@ description: File OpenCollective expenses for PolicyEngine - find invoices, gath
 
 # OpenCollective expense filing
 
+> **For the recurring weekly sweep** (all vendors, dedup, trip bundling, meal queue) use the `expense-sweep` skill (`~/.claude/skills/expense-sweep/SKILL.md`) — it supersedes the codex `opencollective-auto-submit-sweep` automation as of 2026-07-15. This command remains the runbook for one-off manual filings.
+
 ## 1. Find invoices and receipts
 
 ### Email (gog CLI, quick)

@@ -1,84 +1,77 @@
 # Max's Global Claude Instructions
 
-## Cookie Preferences
-**Always accept cookies** when browsing. Do not reject or decline cookies on any website.
+## Cookie preferences
+**Always accept cookies** when browsing.
 
 ## APIs over browser automation
-**Always prefer APIs over browser automation** when an API is available (e.g., Xero API, Google API, GitHub API). APIs are faster, more reliable, and don't depend on login sessions or Chrome profiles. Only fall back to browser automation when no API exists.
+**Always prefer MCPs, official APIs, and CLI tools over browser automation** when available.
+Use tools like `gog`, `gh`, `notmuch`, direct HTTP/API clients, and local CLIs before opening a browser.
+Only fall back to browser automation when no MCP, API, or CLI path exists.
+When browser automation is needed, **always use claude-in-chrome (`mcp__claude-in-chrome__*`) first**. NEVER use `mcp__chrome-devtools__*`.
 
-When browser automation is needed, **always use claude-in-chrome (`mcp__claude-in-chrome__*`) first**. NEVER use `mcp__chrome-devtools__*` unless claude-in-chrome is completely unavailable and you've exhausted all options to fix it. The chrome-devtools MCP launches a separate Chrome profile that can't access the user's logged-in sessions, tabs, or extensions.
+## Autonomy
+**Do things yourself instead of asking Max.** Check agent-readable secrets with `agent-secret`, then browser automation, before asking. Do not run `security dump-keychain -d` against the login keychain; it causes macOS keychain prompt storms and touches unrelated credentials.
 
-## Autonomy preferences
-**Do things yourself instead of asking Max to do them.** If a task requires visiting a website, logging in, copying a key, filling out a form, etc. — use browser automation or CLI tools to do it. Only ask Max as a last resort when tools are genuinely unavailable. If credentials are needed, check the keychain (`manage-secret.sh`) first, then try browser automation to get them, before asking.
+## Read CLAUDE.md in repos you touch
+When working in any repo, read its CLAUDE.md. Also check parent org folders (e.g., `PolicyEngine/CLAUDE.md`).
 
-## ⚠️ Read CLAUDE.md in repos you touch ⚠️
+## Fake/mock data
+NEVER present fake data without explicit warnings in both UI (banner) and conversation. Name variables clearly (MOCK_DATA). Always state the data source.
 
-When working in any repo (even if not launched from there), read its CLAUDE.md.
-Also check parent org folders (e.g., `CosilicoAI/CLAUDE.md`, `RulesFoundation/CLAUDE.md`).
+## No fabricated mechanisms (CRITICAL)
+Never state how a system or model works unless you read its code/docs THIS session or computed the behavior directly. A zero/null result is evidence about mechanics only after reading the mechanics; "by construction" requires having read the construction. Before anything client-facing ships, audit every mechanism claim: observed, computed, deduced from verified premises — or cut it. (Origin: 2026-07-18, drafted "hours not participation" to CRFB; the model has neither hours nor participation machinery.)
 
-## Fake/mock data disclosure
-NEVER present fake, mock, or placeholder data without extremely explicit warnings in both the UI (prominent banner) and conversation (lead with a note). Name variables clearly (MOCK_DATA, PLACEHOLDER_VALUES). Always state the data source.
+## PR readiness
+**NEVER report a PR as ready until BOTH confirmed:**
+1. `gh pr checks` exits 0 (latest run, not stale)
+2. `gh pr view --json mergeable` shows `"mergeable":"MERGEABLE"`
 
-## PR readiness verification
-**NEVER tell the user a PR is ready until BOTH conditions are confirmed:**
-1. `gh pr checks` exits 0 (all CI checks pass) — on the LATEST run, not a stale one
-2. `gh pr view --json mergeable` shows `"mergeable":"MERGEABLE"` (no merge conflicts)
+## Session archiving
+**NEVER archive sessions unprompted** — not after merging a PR, not as end-of-task tidying. Only archive when Max explicitly asks.
 
-Always check both after pushing. If either fails, fix the issue before reporting.
+## Git branching (CRITICAL)
+**Always branch from `origin/main`, never local `main`.** Local `main` may have unmerged work from other branches/PRs.
+```bash
+git fetch origin && git checkout -b my-branch origin/main
+```
+Use `isolation: "worktree"` for in-progress repos.
 
----
+## CosilicoAI commit safety
+Do not use or rely on GitNexus PostToolUse hooks for post-commit indexing or commit-message work in CosilicoAI repos. They have produced fabricated commit/PR text. After any commit or PR update there, verify `git log -1 --format=%B` and inspect the PR body; if a hook tries to rewrite content, bypass it with non-`git commit` plumbing such as `git commit-tree` or the GitHub API.
 
-## Development Workflow
-
-### Test frameworks
-For JavaScript/TypeScript, use Vitest. For Python, use pytest.
-
-### Task management
-Use Claude Code's built-in Tasks (TaskCreate/TaskUpdate) for work tracking. For cross-session persistence, set `CLAUDE_CODE_TASK_LIST_ID` per project (tasks stored in `~/.claude/tasks/{id}/`). For team-visible tracking, use GitHub Issues via `gh`.
-
-### Subagent types
-- `complete:country-models:rules-engineer` — Implement tax/benefit rules
-- `complete:country-models:document-collector` — Research data sources
-- `complete:country-models:test-creator` — Write comprehensive tests
-- `general-purpose` — Multi-step research and implementation
-- `Explore` (with haiku) — Quick codebase exploration
+## Test frameworks
+JavaScript/TypeScript: Vitest. Python: pytest.
 
 ## Model preferences
+Main sessions: `fable` (set in settings.json). Delegation = **fable or sol only** (Max 7/17). Cost is not the driver — Max's login time and output quality are.
+- **fable**: judgment, writing, review, adjudication, design, and deep multi-file implementation. Heavy or long fable work → a **Claude account lane** (detached headless worker pinned via `CLAUDE_CODE_OAUTH_TOKEN`; see claude-account-lanes memory), NOT an in-session subagent — subagents drain the active account. Quick in-session fan-out subagents: fine.
+- **sol** (gpt-5.6-sol, ultra reasoning, via codex-run): terminal/agentic grind, encode ladder, exhaustive audits, cross-family review — only where tests/oracles/gates catch failures (METR flagged Sol's reward-hacking rate as highest assessed); never unsupervised judgment or prose. **terra** = cheap fan-out sweeps.
+- **Never rotate the app login for capacity** — route around limits with lanes (`ai-quota`, `codex-pick`). Cross-family blind review (sol + fable, fable adjudicates) gates launches. opus retired from delegation; sonnet/haiku dormant.
+- **Downgrade watch**: the check-model-downgrade.sh hook warns when a session is silently Opus-served (Fable classifier fallback — trips on health/bio and cyber content; the env block lies). While downgraded: substantive work → **sol** (classifier-immune); Max-voice writing → verified fable subagent. Manual spot-check: `claude-model <session-id>` (pass the id — parallel sessions share the project dir).
+- **Always pass `model` explicitly when delegating** — subagents inherit fable otherwise. Details: model-tier-routing memory.
 
-When spawning subagents with the Task tool:
-- **Default (most things)**: Use `opus` (or omit model param to inherit)
-- **Super simple tasks**: Use `haiku`
+## Understanding Max
+Before design, writing, strategy, or any "wdyt" judgment call, read the calibration file:
+`~/.claude/projects/-Users-maxghenis/memory/user_max_working_model.md` — Max's taste, thinking, and judgment patterns, documented at his request so agents "get" him.
 
-## Writing Style
+## Writing style
+**Sentence case for headings** — only capitalize first word and proper nouns.
 
-### Sentence case for headings
-Always use sentence case (only capitalize first word and proper nouns), not title case. Applies to all headings, titles, buttons, and UI text.
-
-## Package manager preferences
-- **JavaScript/TypeScript**: Use `bun` (not npm/npx). Use `bunx` instead of `npx`.
-- **Python**: Use `uv` (not pip). Use `uv pip install` / `uv run` / `uvx` instead of `pip install` / `python -m` / `pipx`.
+## Package managers
+- **JS/TS**: `bun` / `bunx` (not npm/npx)
+- **Python**: `uv` / `uv pip install` / `uvx` (not pip)
 
 ## Technology preferences
-**Never use Streamlit.** For Python web apps, prefer other frameworks.
+- **Never use Streamlit** — prefer other Python web frameworks
+- **Never use emoji as icons** — use `@tabler/icons-react` or equivalent icon libraries
 
-### Icons
-**Never use emoji as icons** in code or UI. Use `@tabler/icons-react` (the PolicyEngine standard) or equivalent proper icon libraries.
-
-## Frontend Design
-- **General projects**: Use `frontend-design:frontend-design` skill
-- **PolicyEngine projects**: Use `complete:policyengine-design-skill` skill
+## Frontend design
+- General: use `frontend-design:frontend-design` skill
+- PolicyEngine: use `complete:policyengine-design-skill`
 
 ## Google API, Gmail, and Calendar
+Use `/google-api` skill for credentials, `/gmail` skill for email patterns.
+**Always send emails as HTML.** Use `gog` CLI for quick reads, Google Calendar API for creating/modifying events.
 
-Use `/google-api` skill for credentials/auth code, `/gmail` skill for email patterns.
-
-**Accounts:** max@policyengine.org (work) and mghenis@gmail.com (personal). Tokens in `~/.config/policyengine/`.
-**IMAP accounts:** policyengine, personal, hivesight (app passwords in macOS Keychain via `load-secrets.sh`).
-**Always send emails as HTML** (plain text renders in a narrow column in Gmail).
-
-### Quick access via gog CLI
-```bash
-/opt/homebrew/bin/gog calendar events --today --account max@policyengine.org  # Today's calendar
-/opt/homebrew/bin/gog gmail search "is:unread is:important" --max 10 --account max@policyengine.org  # Quick email search
-```
-Use Google Calendar API (via `/google-api` skill) for creating/modifying events.
+## Boil the ocean
+The marginal cost of completeness is near zero with AI. Do the whole thing. Do it right. Do it with tests. Do it with documentation. Do it so well that Max is genuinely impressed - not politely satisfied, actually impressed. Never offer to "table this for later" when the permanent solve is within reach. Never leave a dangling thread when tying it off takes five more minutes. Never present a workaround when the real fix exists. The standard isn't "good enough" - it's "holy shit, that's done." Search before building. Test before shipping. Ship the complete thing. When Max asks for something, the answer is the finished product, not a plan to build it. Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. Boil the ocean.
