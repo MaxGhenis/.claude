@@ -6,6 +6,13 @@
 # Only run in git repos
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
 
+# ~/.claude is a public config repo (github.com/MaxGhenis/.claude) —
+# it only gets deliberate commits, never auto-WIP sweeps.
+toplevel=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$toplevel" ] && [ "$(cd "$toplevel" 2>/dev/null && pwd -P)" = "$(cd "$HOME/.claude" 2>/dev/null && pwd -P)" ]; then
+  exit 0
+fi
+
 # Check for uncommitted changes
 changes=$(git status --porcelain 2>/dev/null)
 [ -z "$changes" ] && exit 0

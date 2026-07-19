@@ -52,3 +52,32 @@ personal-info.md
 /output-styles/
 /slash_commands/
 /mcp-servers/
+
+# Sensitive local data (this repo is public — never commit)
+/expense-sweep/
+/cc-mirror-accounts.json
+/secret-names.txt
+
+# Runtime state & caches
+/backups/
+/logs/
+/ops/
+/sessions/
+/snapshots/
+/scheduled-tasks/
+/.last-cleanup
+/.last-update-result.json
+/mcp-needs-auth-cache.json
+/remote-settings.json
+/policy-limits.json
+/plugins/blocklist.json
+/plugins/.last_inuse_sweep
+
+# Machine-specific symlink into ~/dotfiles
+/agents
+
+# Skills are allowlisted: only deliberately published skills are tracked.
+# To publish a new skill, add a !skills/<name>/ negation below.
+skills/*
+!skills/codex-accounts/
+!skills/tmux/
