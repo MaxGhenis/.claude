@@ -45,9 +45,9 @@ Alternatively, download invoices from [Cloud Console billing](https://console.cl
 
 ## 3. Submit to OpenCollective
 
-### Option A: MCP tools (if opencollective MCP server is running)
+### Option A: CLI (preferred)
 
-Use `submit_reimbursement` or `submit_invoice` MCP tools directly. They handle file upload, payee auto-detection, and payout method selection.
+No OpenCollective MCP server is registered — use the CLI at `/Users/maxghenis/.local/bin/opencollective` (subcommands: `expenses`, `reimbursement`, `invoice`, `add-item`, `edit`; see the expense-sweep skill).
 
 ### Option B: Python API (fallback)
 

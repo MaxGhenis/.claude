@@ -67,6 +67,8 @@ personal-info.md
 /scheduled-tasks/
 /.last-cleanup
 /.last-update-result.json
+/launch.json
+/scheduled_tasks.lock
 /mcp-needs-auth-cache.json
 /remote-settings.json
 /policy-limits.json
@@ -81,3 +83,7 @@ personal-info.md
 skills/*
 !skills/codex-accounts/
 !skills/tmux/
+
+# max-productivity plugin: private reference skills + agents (personal billing/health/account data — never publish)
+skills/max-productivity/skills/
+skills/max-productivity/agents/

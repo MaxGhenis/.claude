@@ -29,26 +29,18 @@ Or HTTP fallback: `curl -s 'http://localhost:7007/api/search?q=$ARGUMENTS'`
 
 ### 3. WhatsApp messages
 
-Search WhatsApp via MCP:
-```
-mcp__whatsapp__list_messages(query="$ARGUMENTS", limit=10)
-```
+WhatsApp imports live in OpenMessage too — the step 2 search already covers them. (The standalone whatsapp MCP server is no longer registered.)
 
-### 4. Gmail (all 3 accounts)
+### 4. Gmail (all 4 accounts)
 
-Search all accounts via IMAP using the `/gmail` skill pattern. Use `X-GM-RAW` for Gmail search syntax:
-
-```python
-# Search all three accounts
-for account in ["policyengine", "personal", "hivesight"]:
-    results = search_email("$ARGUMENTS", account=account)
-```
-
-Or use gog for quick search:
+Use gog for the API-connected accounts:
 ```bash
-/opt/homebrew/bin/gog gmail search "$ARGUMENTS" --max 5 --account max@policyengine.org
-/opt/homebrew/bin/gog gmail search "$ARGUMENTS" --max 5 --account mghenis@gmail.com
+for a in max@policyengine.org mghenis@gmail.com max@maxghenis.com max@axiom-foundation.org; do
+  /opt/homebrew/bin/gog gmail search "$ARGUMENTS" --max 5 --account "$a"
+done
 ```
+
+IMAP is the fallback for hivesight.ai only (app password via keychain — see the `/gmail` skill).
 
 ### 5. Granola meeting notes
 
@@ -56,10 +48,7 @@ Granola access is disabled by default because the CLI can trigger repeated macOS
 
 ### 6. Slack
 
-Search Slack workspace messages if relevant:
-```
-mcp__slack__slack_get_channel_history (check relevant channels)
-```
+Search via the `slack` CLI (no Slack MCP is registered): `slack search "$ARGUMENTS"` for PolicyEngine, `slack -w axiom search "$ARGUMENTS"` for Axiom.
 
 ### 7. Browser (last resort)
 

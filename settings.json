@@ -32,14 +32,30 @@
       "mcp__slack__*",
       "mcp__whatsapp__*",
       "mcp__claude-in-chrome__*",
-      "mcp__callme__*",
-      "mcp__gmail__*",
-      "mcp__google-ads__*",
+      "mcp__google-ads__execute_gaql",
+      "mcp__google-ads__get_account_overview",
+      "mcp__google-ads__get_campaign_performance",
+      "mcp__google-ads__get_keyword_performance",
+      "mcp__google-ads__list_ad_groups",
+      "mcp__google-ads__list_ads",
+      "mcp__google-ads__list_campaigns",
+      "mcp__google-ads__list_keywords",
       "mcp__openmessage__*",
       "mcp__granola__*",
       "mcp__granola-local__*"
     ],
     "deny": [],
+    "ask": [
+      "mcp__google-ads__add_*",
+      "mcp__google-ads__create_*",
+      "mcp__google-ads__enable_*",
+      "mcp__google-ads__pause_*",
+      "mcp__google-ads__update_*",
+      "mcp__google-ads__delete_*",
+      "mcp__google-ads__remove_*",
+      "mcp__google-ads__set_*",
+      "mcp__google-ads__mutate_*"
+    ],
     "defaultMode": "bypassPermissions"
   },
   "model": "claude-fable-5[1m]",
@@ -106,6 +122,11 @@
           {
             "type": "command",
             "command": "/Users/maxghenis/.claude/hooks/sync-setup-page.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/gmail-draft-guard.sh",
+            "timeout": 10
           }
         ]
       },
@@ -161,54 +182,11 @@
   "ultracode": true,
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
+  "theme": "dark",
   "teammateMode": "in-process",
   "remoteControlAtStartup": true,
   "agentPushNotifEnabled": true,
-  "mcpServers": {
-    "gitnexus": {
-      "command": "/opt/homebrew/bin/node",
-      "args": [
-        "/Users/maxghenis/.local/share/gitnexus/node_modules/.bin/gitnexus",
-        "mcp"
-      ]
-    },
-    "gmail": {
-      "command": "/bin/bash",
-      "args": [
-        "-c",
-        "source ~/.nvm/nvm.sh && nvm use 20 > /dev/null && node /Users/maxghenis/Github/Gmail-MCP-Server/dist/index.js"
-      ]
-    },
-    "google-ads": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/maxghenis/tmp/google-ads-mcp-complete",
-        "python",
-        "-m",
-        "google_ads_mcp_complete.fastmcp_server"
-      ],
-      "env": {
-        "GOOGLE_ADS_CONFIG_PATH": "/Users/maxghenis/.config/google-ads-mcp/config.json"
-      }
-    },
-    "openmessage": {
-      "type": "sse",
-      "url": "http://localhost:7007/mcp/sse"
-    },
-    "granola-local": {
-      "command": "/Users/maxghenis/GranolaMCP/.venv/bin/python",
-      "args": [
-        "-m",
-        "granola_mcp.mcp"
-      ]
-    }
-  },
   "feedbackSurveyState": {
     "lastShownTime": 1754133980561
-  },
-  "pluginSources": {
-    "callme": "/Users/maxghenis/call-me/.claude-plugin"
   }
 }

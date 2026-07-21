@@ -6,6 +6,23 @@ description: Gmail API and IMAP access patterns for sending, drafting, and searc
 
 Use `gog` CLI for all email operations. IMAP is a fallback for the hivesight.ai account only.
 
+## ⚠️ Drafts are NOT sent mail (verify before ever claiming "sent")
+
+Gmail threads include DRAFT messages, and gog's human-readable thread output renders them exactly like sent replies (real From/Date, no marker). A draft created with `drafts create --reply-to-message-id` attaches to the thread and LOOKS like a sent reply. Agents have repeatedly reported drafts as sent, causing Max to miss follow-ups.
+
+**Before stating that a message was sent, that Max replied, or that a thread "awaits a response," run one of these checks — no exceptions:**
+
+```bash
+# Check labels: a message is sent only if labelIds LACK "DRAFT" (sent mail carries SENT)
+/opt/homebrew/bin/gog gmail read THREAD_ID --account work -j | \
+  python3 -c "import json,sys; [print(m['id'], m.get('labelIds')) for m in json.load(sys.stdin)['thread']['messages']]"
+
+# Or search the sent folder directly
+/opt/homebrew/bin/gog gmail search 'in:sent to:recipient@example.com' --account work --max 5
+```
+
+Never infer sent-ness from thread presence, a drafts-create timestamp, or a memory file. When recording state in memory, write "draft HELD (id ...)" or "SENT (verified in:sent <date>)" — never bare "sent."
+
 ## Sending email (gog CLI)
 
 **CRITICAL: Always use `--body-html`, NEVER `--body` with HTML tags.** Using `--body` with HTML sends raw `<p>` tags as visible text. This actually happened — sent an email to Code for America with raw HTML tags visible.
