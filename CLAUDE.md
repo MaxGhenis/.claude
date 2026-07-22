@@ -67,7 +67,7 @@ Before design, writing, strategy, or any "wdyt" judgment call, read the calibrat
 
 ## Frontend design
 - General: use `frontend-design:frontend-design` skill
-- PolicyEngine: use `complete:policyengine-design-skill`
+- PolicyEngine: use `complete:policyengine-design` (the `complete@policyengine-claude` plugin is enabled per-repo via `.claude/settings.local.json` in PE clones, not globally — its 46 skills cost ~8.6k always-on tokens. Missing in a new clone or worktree? Add the same settings.local.json there.)
 
 ## Google API, Gmail, and Calendar
 Use `/google-api` skill for credentials, `/gmail` skill for email patterns.

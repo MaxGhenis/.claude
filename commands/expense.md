@@ -4,7 +4,12 @@ description: File OpenCollective expenses for PolicyEngine - find invoices, gath
 
 # OpenCollective expense filing
 
-> **For the recurring weekly sweep** (all vendors, dedup, trip bundling, meal queue) use the `expense-sweep` skill (`~/.claude/skills/expense-sweep/SKILL.md`) — it supersedes the codex `opencollective-auto-submit-sweep` automation as of 2026-07-15. This command remains the runbook for one-off manual filings.
+> **Expense lanes — pick the right one:**
+> - **Weekly recurring sweep** (all vendors, dedup, trip bundling, meal queue): `expense-sweep` skill (`~/.claude/skills/expense-sweep/SKILL.md`) — runs headless via launchd; supersedes the codex `opencollective-auto-submit-sweep` automation (2026-07-15).
+> - **One-off manual filing**: this command.
+> - **Anthropic monthly receipts**: `/anthropic-expenses`.
+> - **Downloading receipt attachments** (helper for the above): `/download-receipts`.
+> - **Status / reconciliation check**: `/max-productivity:expenses`; OC mechanics reference: `max-productivity:opencollective-expenses` skill.
 
 ## 1. Find invoices and receipts
 

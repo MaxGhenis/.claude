@@ -66,6 +66,19 @@
           {
             "type": "command",
             "command": "/Users/maxghenis/.claude/hooks/enforce-package-managers.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/guard-never-rules.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/guard-never-rules.sh"
           }
         ]
       },
@@ -173,11 +186,11 @@
     "complete@policyengine-claude": false,
     "rules-foundation@rules-foundation": true,
     "codex-bridge@maxghenis-plugins": true,
-    "vercel@claude-plugins-official": true,
+    "vercel@claude-plugins-official": false,
     "frontend-design@claude-plugins-official": true
   },
   "alwaysThinkingEnabled": true,
-  "effortLevel": "xhigh",
+  "effortLevel": "max",
   "ultracode": true,
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,

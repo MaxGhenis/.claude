@@ -4,6 +4,8 @@ description: File Anthropic API/subscription expenses on OpenCollective - search
 
 # Anthropic expense filing
 
+> **Lane check**: this is the Anthropic-specific monthly runbook. The weekly all-vendor automation is the `expense-sweep` skill; one-off filings for other vendors use `/expense` (lane map at the top of that file).
+
 File all Anthropic receipts as OpenCollective reimbursements for PolicyEngine. Both work and personal Anthropic charges are PE expenses.
 
 ## Step 1: Search both email accounts for Anthropic receipts

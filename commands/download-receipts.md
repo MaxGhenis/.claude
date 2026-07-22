@@ -4,6 +4,8 @@ description: Download PDF receipt attachments from Gmail using gog CLI and save 
 
 # Download receipts from Gmail
 
+> **Lane check**: helper used by `/expense`, `/anthropic-expenses`, and the `expense-sweep` skill — not an expense filer itself (lane map at the top of `/expense`).
+
 Automates downloading PDF receipt attachments from Gmail using the `gog` CLI. Supports searching across one or both Google accounts, filtering by attachment name pattern, and deduplicating results.
 
 ## Quick start
