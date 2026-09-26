@@ -92,6 +92,15 @@
             "statusMessage": "Enriching with GitNexus graph context..."
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/mask-credentials.py"
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -149,6 +158,15 @@
             "type": "command",
             "command": "/Users/maxghenis/.claude/hooks/check-model-downgrade.sh",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/maxghenis/.claude/hooks/mask-credentials.py"
           }
         ]
       }
