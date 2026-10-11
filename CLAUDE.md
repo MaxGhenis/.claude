@@ -66,6 +66,8 @@ Do not use or rely on GitNexus PostToolUse hooks for post-commit indexing or com
 ## Test frameworks
 JavaScript/TypeScript: Vitest. Python: pytest.
 
+**Cap local runs at 4 workers (Max 2026-10-11).** About 30 sessions and the Subfleet lanes share one 18-CPU host. Above load 150, Codex lane runs fail about 15 times as often, and quiet-host model runs can't start. So use `pytest -n 4` or less, never a larger explicit `-n`. `settings.json` sets `PYTEST_XDIST_AUTO_NUM_WORKERS=4` for `-n auto`, BLAS/OpenMP to 4 threads and `OMP_WAIT_POLICY=PASSIVE`; don't override them upward in a launch. Broad PE YAML suites and impact runs go through `~/reviews/us-hub/scripts/heavy_run.sh`.
+
 ## Invariants for load-bearing logic (Max 2026-09-25)
 When you write or change logic whose outputs people rely on (calculators, models, estimators, schedulers, scoring, accounting, aggregations, published numbers):
 - State its invariants in the PR. These are properties that hold for every input: accounting and conservation identities, bounds, probability axioms, intended monotonicity, determinism, round-trips.
