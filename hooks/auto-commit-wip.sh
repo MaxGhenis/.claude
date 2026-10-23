@@ -23,9 +23,30 @@
 # path, so a file created after the scan is never swept in blind. When the
 # scan itself cannot run, the hook fails closed: tracked changes are still
 # committed, no new file is staged, and the output says so.
+#
+# Shared main checkouts are left alone (added 2026-10-23). The hook fired six
+# times in ~/chief-of-staff, the main checkout of a repository that many
+# sessions and launchd tools write to, and each time committed everyone's
+# uncommitted files onto master as a fixup of whatever HEAD was (c01141053
+# on 9/27 to 60db0a798 on 10/22; 307,379 files in eb87245bb, other sessions'
+# email drafts in 60db0a798). From 8/1 to 10/23 it made at least 39
+# auto-commits in the main checkouts of 21 repositories (their HEAD
+# reflogs): 35 where the repository had linked worktrees, the other 4 onto
+# local main or master.
+# So in a main checkout (its git dir is the common dir) it commits nothing,
+# stages nothing and does not write the index when any of these holds:
+#   a. the repository has a linked worktree: sessions work in their own, and
+#      the main checkout is the common base that others write to;
+#   b. the branch is the default branch (main, master, or origin/HEAD's):
+#      local main takes deliberate commits only;
+#   c. the checkout is on SHARED_CHECKOUTS.
+# The output says which held and how many paths were left. The files stay
+# on disk, so nothing is lost. A linked worktree keeps the auto-commit, and
+# so does a feature branch in a repository with no linked worktree.
 
 MAX_NEW_FILE_BYTES=$((50 * 1024 * 1024))
 EXAMPLES=3   # how many paths to name per category in the summary line
+SHARED_CHECKOUTS=(chief-of-staff)   # main checkouts under $HOME, always shared
 
 # Only run in git repos
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
@@ -37,26 +58,57 @@ home=$HOME
 if [ -z "$home" ]; then
   case $(id -un) in *[!A-Za-z0-9._-]*) ;; *) home=$(eval printf '%s' "~$(id -un)") ;; esac
 fi
-claude_dir=$(cd "$home/.claude" 2>/dev/null && pwd -P)
+real() { [ -n "$1" ] && (cd "$1" 2>/dev/null && pwd -P); }   # path -> physical path, or nothing
+claude_dir=$(real "$home/.claude")
 toplevel=$(git rev-parse --show-toplevel 2>/dev/null)
 [ -n "$toplevel" ] || exit 0
+common=$(real "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
 if [ -n "$claude_dir" ]; then
-  [ "$(cd "$toplevel" 2>/dev/null && pwd -P)" = "$claude_dir" ] && exit 0
-  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-  [ -n "$common" ] && [ "$(cd "$common" 2>/dev/null && pwd -P)" = "$claude_dir/.git" ] && exit 0
+  [ "$(real "$toplevel")" = "$claude_dir" ] && exit 0
+  [ -n "$common" ] && [ "$common" = "$claude_dir/.git" ] && exit 0
 fi
 
 # `git add -A` / `commit -a` always acted on the whole tree even when the
 # session sat in a subdirectory; the untracked-file scan must see the same tree.
 cd "$toplevel" || exit 0
 
-# Check for uncommitted changes
-changes=$(git status --porcelain 2>/dev/null)
-[ -z "$changes" ] && exit 0
-
 branch=$(git branch --show-current 2>/dev/null)
 [ -n "$branch" ] || branch="detached"
 repo=$(basename "$toplevel")
+
+# --- Shared main checkout: leave it alone (rules a-c in the header) ---
+# Read-only from here to the exit: no add, no commit, and the change count
+# runs with --no-optional-locks so git status does not refresh the index.
+git_dir=$(real "$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)")
+if [ -n "$git_dir" ] && [ "$git_dir" = "$common" ]; then
+  shared=""
+  linked=$(( $(git worktree list --porcelain -z 2>/dev/null | tr '\0' '\n' | grep -c '^worktree ') - 1 ))
+  [ "$linked" -gt 0 ] && shared="the repository has $linked linked worktree(s)"
+  default=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+  default=${default#origin/}
+  case "$branch" in
+    main | master | "${default:-main}") shared="$shared${shared:+; }$branch is the default branch" ;;
+  esac
+  top=$(real "$toplevel")
+  for s in "${SHARED_CHECKOUTS[@]}"; do
+    [ -n "$home" ] && [ "$top" = "$(real "$home/$s")" ] &&
+      shared="$shared${shared:+; }~/$s is on this hook's list of shared checkouts"
+  done
+  if [ -n "$shared" ]; then
+    # One NUL-ended record per path (--no-renames: no second path), held with
+    # \001 in place of NUL so a name with a newline still counts once.
+    porcelain=$(git --no-optional-locks status --porcelain --no-renames -z 2>/dev/null | tr '\0' '\001')
+    [ -z "$porcelain" ] && exit 0
+    n_new=$(printf '%s' "$porcelain" | tr '\001' '\0' | grep -z -c '^?? ')
+    n_mod=$(( $(printf '%s' "$porcelain" | tr -cd '\001' | wc -c) - n_new ))
+    echo "Not auto-committing in $repo on branch $branch before context compact: it is a shared main checkout ($shared). Left $n_mod changed tracked and $n_new untracked path(s) as they are, on disk; other sessions' work may be among them. Commit only your own files, by path (git add -- <paths>; git commit), or work in a linked worktree of your own."
+    exit 0
+  fi
+fi
+
+# Check for uncommitted changes
+changes=$(git status --porcelain 2>/dev/null)
+[ -z "$changes" ] && exit 0
 
 # A merge/rebase/cherry-pick with conflicts: committing would bake conflict
 # markers into a bogus commit and finalise the merge. Leave it alone.
