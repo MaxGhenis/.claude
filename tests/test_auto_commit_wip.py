@@ -8,15 +8,16 @@ written. AUTO_COMMIT_WIP_HOOK names another copy of the script to test.
 
 Invariants, for every repository layout and every dirty tree:
   S1  in a shared main checkout (the git dir is the common dir, and the repository has a linked
-      worktree, or the branch is main, master or origin/HEAD's, or the checkout is ~/chief-of-staff)
-      the hook changes no ref, does not write the index, and changes no working file; it prints one
-      "Not auto-committing" line naming the rules that held when there are changes, and nothing
-      when there are none;
+      worktree, or the branch, or the branch being rebased, is main, master or origin/HEAD's, or the
+      checkout is ~/chief-of-staff) the hook writes nothing: no file under .git changes (refs,
+      index, reflogs, config, locks) and no working file changes. It prints one "Not
+      auto-committing" line naming the rules that held when there are changes, and nothing when
+      there are none;
   S2  anywhere else (a linked worktree, a feature branch in a repository with no linked worktree)
       it commits the work in progress as before: one new commit on the current branch, whose parent
       is the old HEAD, and no other ref moves;
-  S3  it never changes, moves or removes a working file, and another worktree's index and files
-      are never touched;
+  S3  it never changes, moves or removes a working file, and another worktree's HEAD, index and
+      files are never touched;
   S4  it exits 0 with nothing on stderr.
 The property test checks S1-S4 against a model of the rules (`shared_reasons`), so the bash
 script and its stated rules are tested against each other."""
@@ -33,6 +34,7 @@ from hypothesis import strategies as st
 
 HOOK = Path(os.environ.get("AUTO_COMMIT_WIP_HOOK") or Path(__file__).resolve().parents[1] / "hooks" / "auto-commit-wip.sh")
 MB = 1024 * 1024
+LIST = "~/chief-of-staff is on this hook's list of shared checkouts"
 
 
 def env_for(home: Path, **extra) -> dict:
@@ -43,8 +45,8 @@ def env_for(home: Path, **extra) -> dict:
     return env
 
 
-def git(where: Path, *args: str, home: Path, check: bool = True) -> str:
-    r = subprocess.run(["git", "-C", str(where), *args], capture_output=True, env=env_for(home))
+def git(where: Path, *args: str, home: Path, check: bool = True, **env) -> str:
+    r = subprocess.run(["git", "-C", str(where), *args], capture_output=True, env=env_for(home, **env))
     if check and r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)}: {r.stderr.decode(errors='replace')}")
     return r.stdout.decode(errors="surrogateescape")
@@ -76,8 +78,8 @@ def add_worktree(repo: Path, home: Path, name: str = "wt", branch: str = "side")
     return wt
 
 
-def hook(where: Path, home: Path) -> str:
-    r = subprocess.run(["/bin/bash", str(HOOK)], cwd=where, capture_output=True, env=env_for(home))
+def hook(where: Path, home: Path, **env) -> str:
+    r = subprocess.run(["/bin/bash", str(HOOK)], cwd=where, capture_output=True, env=env_for(home, **env))
     assert r.returncode == 0, r.stderr.decode(errors="replace")                                    # S4
     assert r.stderr == b"", r.stderr.decode(errors="replace")                                      # S4
     return r.stdout.decode(errors="replace")
@@ -118,8 +120,22 @@ def disk(top: Path) -> dict:
     return out
 
 
-def snapshot(home: Path, *tops: Path) -> tuple:
-    return tuple((refs(t, home), index_state(t, home), disk(t)) for t in tops)
+def dotgit(top: Path, home: Path) -> dict:
+    """Every file and folder under the repository's common git dir, with bytes and mtime: refs,
+    index, reflogs, config, FETCH_HEAD, worktree metadata, locks."""
+    common = Path(git(top, "rev-parse", "--path-format=absolute", "--git-common-dir", home=home).strip())
+    out = {}
+    for d, dirs, files in os.walk(common):
+        out[os.path.relpath(d, common) + "/"] = os.lstat(d).st_mtime_ns
+        for f in files:
+            p = Path(d) / f
+            out[os.path.relpath(p, common)] = (hashlib.sha256(p.read_bytes()).hexdigest(), os.lstat(p).st_mtime_ns)
+    return out
+
+
+def untouched(home: Path, top: Path) -> tuple:
+    """Everything S1 promises not to write."""
+    return (refs(top, home), index_state(top, home), disk(top), dotgit(top, home))
 
 
 def checkout_state(home: Path, *tops: Path) -> tuple:
@@ -130,10 +146,20 @@ def checkout_state(home: Path, *tops: Path) -> tuple:
 
 
 def dirty(top: Path, home: Path) -> None:
-    """Another session's work: a tracked edit, a staged edit, a deletion and a new file."""
+    """Another session's work: a tracked edit, a staged edit, a deletion and a file in a new folder."""
     write(top, {"src/app.py": b"print('theirs')\n", "notes.txt": b"staged by someone\n", "drafts/email.md": b"draft\n"})
     git(top, "add", "notes.txt", home=home)
     (top / "README.md").unlink()
+
+
+def shared_line(name: str, branch: str, reasons: str) -> str:
+    return (f"Not auto-committing in {name} on branch {branch} before context compact: "
+            f"it is a shared main checkout ({reasons}).")
+
+
+def default_line(name: str, branch: str, reason: str) -> str:
+    return (f"Not auto-committing in {name} on branch {branch} before context compact: "
+            f"it is the main checkout and {reason}, which takes deliberate commits only.")
 
 
 # --- S1: a shared main checkout is left alone ------------------------------------------------------
@@ -142,12 +168,12 @@ def test_a_main_checkout_with_a_linked_worktree_is_left_alone(tmp_path):
     repo = make_repo(tmp_path)
     add_worktree(repo, tmp_path)
     dirty(repo, tmp_path)
-    before = snapshot(tmp_path, repo)
+    before = untouched(tmp_path, repo)
     out = hook(repo, tmp_path)
-    assert out.startswith("Not auto-committing in repo on branch work before context compact: it is a shared "
-                          "main checkout (the repository has 1 linked worktree(s)).")
-    assert "Left 3 changed tracked and 1 untracked path(s) as they are, on disk" in out
-    assert snapshot(tmp_path, repo) == before
+    assert out.startswith(shared_line("repo", "work", "the repository has 1 linked worktree(s)"))
+    assert ("Left 3 changed tracked path(s) and 1 untracked path(s) (a new folder counts once) as they are, "
+            "on disk; other sessions' work may be among them.") in out
+    assert untouched(tmp_path, repo) == before
     assert commits(repo, tmp_path) == ["base"]
     assert git(repo, "diff", "--cached", "--name-only", home=tmp_path) == "notes.txt\n"   # still staged, as left
 
@@ -156,10 +182,9 @@ def test_it_is_left_alone_from_a_subfolder_too(tmp_path):
     repo = make_repo(tmp_path)
     add_worktree(repo, tmp_path)
     dirty(repo, tmp_path)
-    before = snapshot(tmp_path, repo)
-    out = hook(repo / "src", tmp_path)
-    assert "shared main checkout (the repository has 1 linked worktree(s))" in out
-    assert snapshot(tmp_path, repo) == before
+    before = untouched(tmp_path, repo)
+    assert hook(repo / "src", tmp_path).startswith(shared_line("repo", "work", "the repository has 1 linked worktree(s)"))
+    assert untouched(tmp_path, repo) == before
 
 
 def test_a_prunable_linked_worktree_still_counts(tmp_path):
@@ -167,19 +192,20 @@ def test_a_prunable_linked_worktree_still_counts(tmp_path):
     wt = add_worktree(repo, tmp_path)
     shutil.rmtree(wt)                                              # folder gone, metadata not pruned
     dirty(repo, tmp_path)
-    before = snapshot(tmp_path, repo)
+    before = untouched(tmp_path, repo)
     assert "the repository has 1 linked worktree(s)" in hook(repo, tmp_path)
-    assert snapshot(tmp_path, repo) == before
+    assert untouched(tmp_path, repo) == before
 
 
 @pytest.mark.parametrize("branch", ["main", "master"])
 def test_the_default_branch_of_a_main_checkout_is_left_alone(tmp_path, branch):
     repo = make_repo(tmp_path, branch=branch)
     dirty(repo, tmp_path)
-    before = snapshot(tmp_path, repo)
+    before = untouched(tmp_path, repo)
     out = hook(repo, tmp_path)
-    assert f"shared main checkout ({branch} is the default branch)" in out
-    assert snapshot(tmp_path, repo) == before
+    assert out.startswith(default_line("repo", branch, f"{branch} is the default branch"))
+    assert "other sessions' work" not in out and "work on a branch of your own" in out
+    assert untouched(tmp_path, repo) == before
 
 
 def test_origin_head_names_the_default_branch(tmp_path):
@@ -187,34 +213,62 @@ def test_origin_head_names_the_default_branch(tmp_path):
     git(tmp_path, "clone", "-q", "--bare", str(seed), str(tmp_path / "origin.git"), home=tmp_path)
     git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(tmp_path / "clone"), home=tmp_path)
     clone = tmp_path / "clone"
-    assert git(clone, "symbolic-ref", "--short", "refs/remotes/origin/HEAD", home=tmp_path).strip() == "origin/trunk"
+    assert git(clone, "symbolic-ref", "refs/remotes/origin/HEAD", home=tmp_path).strip() == "refs/remotes/origin/trunk"
+    git(clone, "branch", "origin/trunk", home=tmp_path)             # makes `symbolic-ref --short` ambiguous
     dirty(clone, tmp_path)
-    before = snapshot(tmp_path, clone)
-    assert "shared main checkout (trunk is the default branch)" in hook(clone, tmp_path)
-    assert snapshot(tmp_path, clone) == before
+    before = untouched(tmp_path, clone)
+    assert hook(clone, tmp_path).startswith(default_line("clone", "trunk", "trunk is the default branch"))
+    assert untouched(tmp_path, clone) == before
     git(clone, "checkout", "-q", "-b", "feature", home=tmp_path)    # a feature branch is not
     assert "Auto-committed" in hook(clone, tmp_path)
     assert commits(clone, tmp_path)[:2] == ["fixup! base", "base"]
+
+
+def test_a_rebase_of_the_default_branch_is_left_alone(tmp_path):
+    repo = make_repo(tmp_path, branch="main")
+    for msg in ("c1", "c2"):
+        write(repo, {f"{msg}.txt": msg.encode()})
+        git(repo, "add", "-A", home=tmp_path)
+        git(repo, "commit", "-q", "-m", msg, home=tmp_path)
+    git(repo, "rebase", "-q", "-i", "HEAD~2", home=tmp_path, GIT_SEQUENCE_EDITOR="sed -i.bak -e '1s/^pick/edit/'")
+    assert git(repo, "branch", "--show-current", home=tmp_path) == ""   # stopped at c1, detached
+    write(repo, {"other.txt": b"someone else's\n"})
+    before = untouched(tmp_path, repo)
+    out = hook(repo, tmp_path)
+    assert out.startswith(default_line("repo", "detached", "main, being rebased, is the default branch"))
+    assert untouched(tmp_path, repo) == before
+    git(repo, "rebase", "--continue", home=tmp_path)
+    assert commits(repo, tmp_path, "main") == ["c2", "c1", "base"]
 
 
 def test_an_unborn_default_branch_is_left_alone(tmp_path):
     repo = make_repo(tmp_path, branch="main", commit=False)
     write(repo, {"a.md": b"a\n"})
     out = hook(repo, tmp_path)
-    assert "shared main checkout (main is the default branch). Left 0 changed tracked and 1 untracked" in out
+    assert out.startswith(default_line("repo", "main", "main is the default branch"))
+    assert "Left 0 changed tracked path(s) and 1 untracked path(s)" in out
     assert git(repo, "rev-parse", "-q", "--verify", "HEAD", home=tmp_path, check=False) == ""
 
 
 def test_chief_of_staff_is_on_the_list_on_any_branch(tmp_path):
     cos = make_repo(tmp_path, name="chief-of-staff", branch="side-branch")
     dirty(cos, tmp_path)
-    before = snapshot(tmp_path, cos)
-    out = hook(cos, tmp_path)
-    assert "shared main checkout (~/chief-of-staff is on this hook's list of shared checkouts)" in out
-    assert snapshot(tmp_path, cos) == before
+    before = untouched(tmp_path, cos)
+    assert hook(cos, tmp_path).startswith(shared_line("chief-of-staff", "side-branch", LIST))
+    assert untouched(tmp_path, cos) == before
     (tmp_path / "cos-link").symlink_to(cos)                        # reached through a symlink: same checkout
-    assert "~/chief-of-staff is on this hook's list" in hook(tmp_path / "cos-link", tmp_path)
-    assert snapshot(tmp_path, cos) == before
+    assert LIST in hook(tmp_path / "cos-link", tmp_path)
+    assert untouched(tmp_path, cos) == before
+
+
+def test_chief_of_staff_is_found_when_home_is_a_symlink(tmp_path):
+    real_home = tmp_path / "real-home"
+    cos = make_repo(real_home, name="chief-of-staff", branch="side-branch")
+    (tmp_path / "home-link").symlink_to(real_home)                 # $HOME/chief-of-staff is not a physical path
+    dirty(cos, real_home)
+    before = untouched(real_home, cos)
+    assert LIST in hook(cos, tmp_path / "home-link")
+    assert untouched(real_home, cos) == before
 
 
 def test_every_rule_that_holds_is_named(tmp_path):
@@ -222,22 +276,22 @@ def test_every_rule_that_holds_is_named(tmp_path):
     add_worktree(cos, tmp_path)
     add_worktree(cos, tmp_path, name="wt2", branch="side2")
     dirty(cos, tmp_path)
-    assert ("(the repository has 2 linked worktree(s); master is the default branch; "
-            "~/chief-of-staff is on this hook's list of shared checkouts)") in hook(cos, tmp_path)
+    assert hook(cos, tmp_path).startswith(shared_line(
+        "chief-of-staff", "master", f"the repository has 2 linked worktree(s); master is the default branch; {LIST}"))
 
 
-def test_a_clean_shared_checkout_prints_nothing(tmp_path):
+def test_a_clean_shared_checkout_prints_nothing_and_writes_nothing(tmp_path):
     repo = make_repo(tmp_path, branch="main")
     add_worktree(repo, tmp_path)
-    before = snapshot(tmp_path, repo)
+    before = untouched(tmp_path, repo)
     assert hook(repo, tmp_path) == ""
-    assert snapshot(tmp_path, repo) == before
+    assert untouched(tmp_path, repo) == before
 
 
 def test_a_name_with_a_newline_counts_once(tmp_path):
     repo = make_repo(tmp_path, branch="main")
     write(repo, {"two\nlines.md": b"x\n", "plain.md": b"y\n"})
-    assert "Left 0 changed tracked and 2 untracked path(s)" in hook(repo, tmp_path)
+    assert "Left 0 changed tracked path(s) and 2 untracked path(s)" in hook(repo, tmp_path)
 
 
 def test_an_index_lock_held_by_another_session_does_not_matter(tmp_path):
@@ -245,8 +299,22 @@ def test_an_index_lock_held_by_another_session_does_not_matter(tmp_path):
     dirty(repo, tmp_path)
     lock = repo / ".git" / "index.lock"
     lock.write_bytes(b"")                                          # someone else's git command is mid-write
-    out = hook(repo, tmp_path)
-    assert "Left 3 changed tracked and 1 untracked path(s)" in out and lock.exists()
+    before = untouched(tmp_path, repo)
+    assert "Left 3 changed tracked path(s) and 1 untracked path(s)" in hook(repo, tmp_path)
+    assert untouched(tmp_path, repo) == before
+
+
+def test_it_commits_nothing_if_git_cannot_name_the_git_dir(tmp_path):
+    repo = make_repo(tmp_path)                                     # a feature branch: it would commit
+    write(repo, {"src/app.py": b"print('v2')\n"})
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    (shim / "git").write_text(f'#!/bin/bash\nfor a in "$@"; do [ "$a" = --git-dir ] && exit 128; done\n'
+                              f'exec {shutil.which("git")} "$@"\n')
+    (shim / "git").chmod(0o755)
+    out = hook(repo, tmp_path, PATH=f"{shim}:{os.environ['PATH']}")
+    assert "git did not name its git dir and common dir" in out
+    assert commits(repo, tmp_path) == ["base"]
 
 
 # --- S2: a linked worktree keeps the auto-commit -----------------------------------------------------
@@ -255,15 +323,13 @@ def test_a_linked_worktree_still_commits_its_own_work_only(tmp_path):
     repo = make_repo(tmp_path, branch="main")
     wt = add_worktree(repo, tmp_path)
     dirty(repo, tmp_path)                                          # other sessions' files in the main checkout
-    main_before = snapshot(tmp_path, repo)[0][1:]                  # its index and files
-    main_ref = git(repo, "rev-parse", "main", home=tmp_path)
+    main_before = checkout_state(tmp_path, repo)                   # its HEAD, branch, index and files
     write(wt, {"src/app.py": b"print('mine')\n", "src/mine.py": b"x = 1\n"})
     out = hook(wt, tmp_path)
     assert "Auto-committed 2 file(s) in wt on branch side before context compact." in out
     assert commits(wt, tmp_path) == ["fixup! base", "base"]
     assert tracked(wt, tmp_path) == {"README.md", "src/app.py", "notes.txt", "src/mine.py"}
-    assert git(repo, "rev-parse", "main", home=tmp_path) == main_ref
-    assert snapshot(tmp_path, repo)[0][1:] == main_before
+    assert checkout_state(tmp_path, repo) == main_before
 
 
 def test_a_linked_worktree_of_chief_of_staff_still_commits(tmp_path):
@@ -352,18 +418,21 @@ EDITS = st.lists(st.sampled_from(["edit", "delete", "new", "new_log", "stage_edi
                  max_size=6)
 
 
-def shared_reasons(layout: str, branch: str) -> list[str]:
-    """The rules of the header (a-c), for a main checkout; a linked worktree is never shared."""
+def shared_reasons(layout: str, branch: str) -> tuple[list[str], bool]:
+    """The rules of the header (a-c) for a main checkout, and whether a or c held (the checkout is
+    shared with others, not only on its default branch). A linked worktree is never skipped."""
     if layout.startswith("in_"):
-        return []
-    reasons = []
+        return [], False
+    reasons, others = [], False
     if layout in ("with_worktree", "with_prunable_worktree"):
         reasons.append("the repository has 1 linked worktree(s)")
+        others = True
     if branch in ("main", "master"):
         reasons.append(f"{branch} is the default branch")
     if layout == "chief_of_staff":
-        reasons.append("~/chief-of-staff is on this hook's list of shared checkouts")
-    return reasons
+        reasons.append(LIST)
+        others = True
+    return reasons, others
 
 
 def apply_edits(top: Path, home: Path, edits: list[str]) -> None:
@@ -390,7 +459,7 @@ def apply_edits(top: Path, home: Path, edits: list[str]) -> None:
 @given(layout=st.sampled_from(LAYOUTS), branch=st.sampled_from(["main", "master", "work"]), edits=EDITS,
        from_subdir=st.booleans())
 def test_the_hook_follows_the_rules_for_any_layout(layout, branch, edits, from_subdir):
-    home = Path(tempfile.mkdtemp(prefix="acw-", dir=os.environ.get("PYTEST_TMP")))
+    home = Path(tempfile.mkdtemp(prefix="acw-"))
     try:
         name = "chief-of-staff" if "chief_of_staff" in layout else "repo"
         repo = make_repo(home, name=name, branch=branch)
@@ -411,7 +480,8 @@ def test_the_hook_follows_the_rules_for_any_layout(layout, branch, edits, from_s
         had_changes = git(top, "--no-optional-locks", "status", "--porcelain", home=home) != ""
         others_before = checkout_state(home, *others)
         files_before = disk(top)
-        refs_before, index_before = refs(top, home), index_state(top, home)
+        all_before = untouched(home, top)
+        refs_before = all_before[0]
         head_before = git(top, "rev-parse", "HEAD", home=home).strip()
         cur = git(top, "branch", "--show-current", home=home).strip()
 
@@ -419,14 +489,15 @@ def test_the_hook_follows_the_rules_for_any_layout(layout, branch, edits, from_s
 
         assert disk(top) == files_before                           # S3
         assert checkout_state(home, *others) == others_before      # S3
-        reasons = shared_reasons(layout, branch)
+        reasons, shared = shared_reasons(layout, branch)
         if reasons:                                                # S1
-            assert refs(top, home) == refs_before and index_state(top, home) == index_before
-            if had_changes:
-                assert out.startswith(f"Not auto-committing in {name} on branch {branch} before context compact: "
-                                      f"it is a shared main checkout ({'; '.join(reasons)}).")
-            else:
+            assert untouched(home, top) == all_before
+            if not had_changes:
                 assert out == ""
+            elif shared:
+                assert out.startswith(shared_line(name, branch, "; ".join(reasons)))
+            else:
+                assert out.startswith(default_line(name, branch, reasons[0]))
         else:                                                      # S2
             assert "Not auto-committing" not in out
             head = git(top, "rev-parse", "HEAD", home=home).strip()

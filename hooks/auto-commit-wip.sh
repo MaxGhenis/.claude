@@ -37,12 +37,14 @@
 # stages nothing and does not write the index when any of these holds:
 #   a. the repository has a linked worktree: sessions work in their own, and
 #      the main checkout is the common base that others write to;
-#   b. the branch is the default branch (main, master, or origin/HEAD's):
-#      local main takes deliberate commits only;
+#   b. the branch is the default branch (main, master, or origin/HEAD's), or
+#      a rebase of it is in progress: local main takes deliberate commits only;
 #   c. the checkout is on SHARED_CHECKOUTS.
 # The output says which held and how many paths were left. The files stay
-# on disk, so nothing is lost. A linked worktree keeps the auto-commit, and
-# so does a feature branch in a repository with no linked worktree.
+# on disk, so nothing is lost. If git cannot name the git dir and common dir,
+# the hook commits nothing (it fails closed). A linked worktree keeps the
+# auto-commit, and so does a feature branch in a repository with no linked
+# worktree.
 
 MAX_NEW_FILE_BYTES=$((50 * 1024 * 1024))
 EXAMPLES=3   # how many paths to name per category in the summary line
@@ -77,31 +79,54 @@ branch=$(git branch --show-current 2>/dev/null)
 repo=$(basename "$toplevel")
 
 # --- Shared main checkout: leave it alone (rules a-c in the header) ---
-# Read-only from here to the exit: no add, no commit, and the change count
-# runs with --no-optional-locks so git status does not refresh the index.
+# This path is read-only: no add, no commit, and the change count runs with
+# --no-optional-locks so git status does not refresh the index.
 git_dir=$(real "$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)")
-if [ -n "$git_dir" ] && [ "$git_dir" = "$common" ]; then
-  shared=""
-  linked=$(( $(git worktree list --porcelain -z 2>/dev/null | tr '\0' '\n' | grep -c '^worktree ') - 1 ))
-  [ "$linked" -gt 0 ] && shared="the repository has $linked linked worktree(s)"
-  default=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
-  default=${default#origin/}
-  case "$branch" in
-    main | master | "${default:-main}") shared="$shared${shared:+; }$branch is the default branch" ;;
+if [ -z "$git_dir" ] || [ -z "$common" ]; then
+  echo "Not auto-committing in $repo on branch $branch before context compact: git did not name its git dir and common dir, so the hook cannot tell whether this is a shared main checkout."
+  exit 0
+fi
+if [ "$git_dir" = "$common" ]; then
+  why="" others=0
+  # A linked worktree is a folder in the common dir's worktrees/, which is
+  # what git worktree list reads; a prunable one counts too.
+  linked=0
+  for w in "$common"/worktrees/*/; do [ -d "$w" ] && linked=$((linked + 1)); done
+  [ "$linked" -gt 0 ] && why="the repository has $linked linked worktree(s)" others=1
+  # Mid-rebase there is no current branch: the branch being rebased, which
+  # gets every commit made now, is in head-name.
+  onto=$branch rebasing=""
+  if [ "$branch" = detached ]; then
+    for f in rebase-merge/head-name rebase-apply/head-name; do
+      [ -f "$git_dir/$f" ] || continue
+      h=$(cat "$git_dir/$f" 2>/dev/null)
+      case "$h" in refs/heads/?*) onto=${h#refs/heads/} rebasing=", being rebased," ;; esac
+      break
+    done
+  fi
+  default=$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)
+  default=${default#refs/remotes/origin/}
+  case "$onto" in
+    main | master | "${default:-main}") why="$why${why:+; }$onto$rebasing is the default branch" ;;
   esac
   top=$(real "$toplevel")
   for s in "${SHARED_CHECKOUTS[@]}"; do
     [ -n "$home" ] && [ "$top" = "$(real "$home/$s")" ] &&
-      shared="$shared${shared:+; }~/$s is on this hook's list of shared checkouts"
+      why="$why${why:+; }~/$s is on this hook's list of shared checkouts" others=1
   done
-  if [ -n "$shared" ]; then
+  if [ -n "$why" ]; then
     # One NUL-ended record per path (--no-renames: no second path), held with
     # \001 in place of NUL so a name with a newline still counts once.
     porcelain=$(git --no-optional-locks status --porcelain --no-renames -z 2>/dev/null | tr '\0' '\001')
     [ -z "$porcelain" ] && exit 0
     n_new=$(printf '%s' "$porcelain" | tr '\001' '\0' | grep -z -c '^?? ')
     n_mod=$(( $(printf '%s' "$porcelain" | tr -cd '\001' | wc -c) - n_new ))
-    echo "Not auto-committing in $repo on branch $branch before context compact: it is a shared main checkout ($shared). Left $n_mod changed tracked and $n_new untracked path(s) as they are, on disk; other sessions' work may be among them. Commit only your own files, by path (git add -- <paths>; git commit), or work in a linked worktree of your own."
+    left="Left $n_mod changed tracked path(s) and $n_new untracked path(s) (a new folder counts once) as they are, on disk"
+    if [ "$others" -eq 1 ]; then
+      echo "Not auto-committing in $repo on branch $branch before context compact: it is a shared main checkout ($why). $left; other sessions' work may be among them. Commit only your own files, by path (git add -- <paths>; git commit), or work in a linked worktree of your own."
+    else
+      echo "Not auto-committing in $repo on branch $branch before context compact: it is the main checkout and $why, which takes deliberate commits only. $left. Commit what you mean to keep, by path (git add -- <paths>; git commit), or work on a branch of your own."
+    fi
     exit 0
   fi
 fi
