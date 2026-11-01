@@ -1,0 +1,19 @@
+name: Hook tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  auto-commit-wip:
+    # The hook runs on macOS: it needs /bin/bash 3.2, BSD stat and BSD grep.
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv run --no-project --with pytest --with hypothesis pytest tests/test_auto_commit_wip.py -q -p no:cacheprovider
