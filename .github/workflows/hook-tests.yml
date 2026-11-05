@@ -17,3 +17,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
       - run: uv run --no-project --with pytest --with hypothesis pytest tests/test_auto_commit_wip.py -q -p no:cacheprovider
+
+  gitnexus-index:
+    # The tool's lock and the guard's grep flags are the macOS ones the host runs.
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv run --no-project --with pytest --with hypothesis pytest tests/test_gitnexus_index.py tests/test_enforce_package_managers.py -q -p no:cacheprovider

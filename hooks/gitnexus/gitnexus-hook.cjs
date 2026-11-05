@@ -14,6 +14,7 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
@@ -104,21 +105,17 @@ function extractPattern(toolName, toolInput) {
 }
 
 /**
- * Resolve the gitnexus CLI path.
- * 1. Relative path (works when script is inside npm package)
- * 2. require.resolve (works when gitnexus is globally installed)
- * 3. Fall back to npx (returns empty string)
+ * Resolve the gitnexus CLI path, or return '' when the pinned build is absent.
+ * Every GitNexus client on this machine runs the build behind gitnexus-current, so the build that
+ * writes an index is the build that reads it. The hook never falls back to a floating runner: a
+ * newer release writes databases the pinned build cannot open.
  */
 function resolveCliPath() {
-  let cliPath = "/Users/maxghenis/.local/share/gitnexus/node_modules/gitnexus/dist/cli/index.js";
-  if (!fs.existsSync(cliPath)) {
-    try {
-      cliPath = require.resolve('gitnexus/dist/cli/index.js');
-    } catch {
-      cliPath = '';
-    }
-  }
-  return cliPath;
+  const cliPath = path.join(
+    os.homedir(),
+    '.local/share/gitnexus-current/node_modules/gitnexus/dist/cli/index.js',
+  );
+  return fs.existsSync(cliPath) ? cliPath : '';
 }
 
 /**
@@ -126,19 +123,9 @@ function resolveCliPath() {
  * Returns the stderr output (KuzuDB captures stdout at OS level).
  */
 function runGitNexusCli(cliPath, args, cwd, timeout) {
-  const isWin = process.platform === 'win32';
-  if (cliPath) {
-    return spawnSync(process.execPath, [cliPath, ...args], {
-      encoding: 'utf-8',
-      timeout,
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  }
-  // On Windows, invoke npx.cmd directly (no shell needed)
-  return spawnSync(isWin ? 'npx.cmd' : 'npx', ['-y', 'gitnexus', ...args], {
+  return spawnSync(process.execPath, [cliPath, ...args], {
     encoding: 'utf-8',
-    timeout: timeout + 5000,
+    timeout,
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -161,6 +148,7 @@ function handlePreToolUse(input) {
   if (!pattern || pattern.length < 3) return;
 
   const cliPath = resolveCliPath();
+  if (!cliPath) return;
   let result = '';
   try {
     const child = runGitNexusCli(cliPath, ['augment', '--', pattern], cwd, 7000);

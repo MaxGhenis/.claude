@@ -1,0 +1,797 @@
+#!/usr/bin/env python3
+"""Keep this machine on one GitNexus build and one canonical index per repository.
+
+    gitnexus-index refresh <repo>   rebuild <repo>'s index on a detached worktree of origin
+    gitnexus-index doctor           check the build, what launches it, and the registry
+    gitnexus-index doctor --fix     also remove dead registry rows; storage stays on disk
+    gitnexus-index doctor --probe   also ask the configured MCP server to open every index
+
+Why this exists. Each GitNexus release bundles a LadybugDB engine, and an engine refuses a
+database whose storage version it does not know. One build wrote the indexes and another read
+them, so `impact` failed across the machine. Indexing session worktrees also registered slugs
+and duplicate names, and a duplicate name makes that name fail for every session.
+
+The layout this tool keeps:
+  ~/.local/share/gitnexus-current          symlink to the one pinned install
+  ~/TheAxiomFoundation/_worktrees/gitnexus-index/<repo>
+                                           the index's home, a locked worktree detached at
+                                           origin's default branch, which holds no edits
+
+Moving the pin is a deliberate step: install the new build beside the old one, measure which
+storage versions its engine opens, add them to READABLE_STORAGE, then move the symlink.
+
+Exit codes: 0 healthy or done, 1 a problem needs attention, 75 try again later (busy or loaded).
+"""
+
+from __future__ import annotations
+
+import argparse
+import collections
+import contextlib
+import dataclasses
+import datetime
+import fcntl
+import json
+import os
+from pathlib import Path
+import queue
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import threading
+import time
+from typing import Iterable, Iterator, Mapping, Sequence
+
+
+EXIT_OK = 0
+EXIT_PROBLEM = 1
+EXIT_TRY_LATER = 75
+
+DEFAULT_MAX_LOAD = 150.0
+DEFAULT_WORKERS = 4
+WORKER_TIMEOUT_SECONDS = 120
+GIT_TIMEOUT_SECONDS = 600
+PROBE_TIMEOUT_SECONDS = 120
+
+# Repositories whose only index lives under the index root. A directory there counts too.
+MANAGED_REPOS = ("axiom-corpus", "axiom-api")
+
+# Storage versions each engine opens, measured by opening real databases with that engine.
+READABLE_STORAGE = {"0.18.3": frozenset({40, 42})}
+
+LBUG_MAGIC = b"LBUG"
+UNRECOGNIZED_HEADER = 0
+WORKTREE_LOCK_REASON = "GitNexus canonical index; refreshed by gitnexus-index"
+PROBE_SYMBOL = "__gitnexus_index_doctor_probe__"
+PROBE_FAILURE = re.compile(
+    r"different version|runtime exception|ladybugdb not found|multiple registered repos"
+    r"|repository [^\n]{0,200}not found|no indexed repositories",
+    re.IGNORECASE,
+)
+
+
+class Problem(Exception):
+    """A failure that needs attention; exits 1."""
+
+
+class TryLater(Exception):
+    """The host is busy or another refresh holds the lock; exits 75."""
+
+
+@dataclasses.dataclass(frozen=True)
+class Layout:
+    home: Path
+    gitnexus_home: Path
+    current: Path
+    index_root: Path
+    source_root: Path
+    node: str
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> "Layout":
+        home = Path(env.get("HOME") or Path.home())
+        return cls(
+            home=home,
+            gitnexus_home=Path(env.get("GITNEXUS_HOME") or home / ".gitnexus"),
+            current=Path(env.get("GITNEXUS_INDEX_CURRENT") or home / ".local/share/gitnexus-current"),
+            index_root=Path(
+                env.get("GITNEXUS_INDEX_ROOT") or home / "TheAxiomFoundation/_worktrees/gitnexus-index"
+            ),
+            source_root=Path(env.get("GITNEXUS_INDEX_SOURCE_ROOT") or home / "TheAxiomFoundation"),
+            node=env.get("GITNEXUS_INDEX_NODE") or shutil.which("node") or "/opt/homebrew/bin/node",
+        )
+
+    @property
+    def registry(self) -> Path:
+        return self.gitnexus_home / "registry.json"
+
+    @property
+    def cli(self) -> Path:
+        return self.current / "node_modules/gitnexus/dist/cli/index.js"
+
+    @property
+    def launcher(self) -> Path:
+        return self.current / "node_modules/.bin/gitnexus"
+
+    @property
+    def repo_manager(self) -> Path:
+        return self.current / "node_modules/gitnexus/dist/storage/repo-manager.js"
+
+    def canonical_path(self, repo: str) -> str:
+        return os.path.realpath(self.index_root / repo)
+
+
+@dataclasses.dataclass(frozen=True)
+class Row:
+    """What the prune rules need to know about one registry entry."""
+
+    name: str
+    path: str
+    exists: bool
+    storage_version: int | None
+    repo: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class Check:
+    name: str
+    ok: bool
+    detail: str
+
+
+def storage_version(storage: Path) -> int | None:
+    """Return the database's storage version, None without a database, 0 for an unknown header."""
+    try:
+        with open(storage / "lbug", "rb") as handle:
+            header = handle.read(12)
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+        return None
+    if len(header) < 12 or header[:4] != LBUG_MAGIC:
+        return UNRECOGNIZED_HEADER
+    return struct.unpack("<Q", header[4:12])[0]
+
+
+def repo_from_url(url: str | None) -> str | None:
+    """Return the repository name in an https or ssh remote URL."""
+    if not url:
+        return None
+    tail = url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    if tail.endswith(".git"):
+        tail = tail[: -len(".git")]
+    return tail or None
+
+
+def prune_reason(
+    row: Row, *, managed: frozenset[str], canonical: frozenset[str], readable: frozenset[int]
+) -> str | None:
+    """Return why a registry row should go, or None to keep it.
+
+    The reason depends only on the row, so one row can never change another's fate. Refresh owns
+    canonical rows, so they never appear here even when broken; `doctor` reports those instead.
+    """
+    if row.path in canonical:
+        return None
+    if not row.exists:
+        return "missing-directory"
+    if row.storage_version is None:
+        return "no-database"
+    if row.storage_version not in readable:
+        return "unreadable-database"
+    if row.name in managed:
+        return "duplicate-of-canonical"
+    if row.repo in managed:
+        return "worktree-of-managed-repo"
+    return None
+
+
+def plan_prune(
+    rows: Sequence[Row], *, managed: frozenset[str], canonical: frozenset[str], readable: frozenset[int]
+) -> list[tuple[Row, str]]:
+    plan = []
+    for row in rows:
+        reason = prune_reason(row, managed=managed, canonical=canonical, readable=readable)
+        if reason:
+            plan.append((row, reason))
+    return plan
+
+
+def duplicate_names(rows: Iterable[Row]) -> list[str]:
+    counts = collections.Counter(row.name for row in rows)
+    return sorted(name for name, count in counts.items() if count > 1)
+
+
+def run_git(cwd: Path, *args: str) -> str:
+    """Run git in cwd and return its stripped stdout, raising Problem when it fails."""
+    command = ["git", "-C", str(cwd), *args]
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS, check=False
+        )
+    except subprocess.TimeoutExpired as error:
+        raise Problem(f"git {' '.join(args)} timed out in {cwd}") from error
+    if result.returncode != 0:
+        raise Problem(f"git {' '.join(args)} failed in {cwd}: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def origin_url(path: str, recorded: str | None) -> str | None:
+    """Prefer the checkout's live origin; fall back to the URL the registry recorded."""
+    if os.path.isdir(path):
+        with contextlib.suppress(Problem):
+            return run_git(Path(path), "config", "--get", "remote.origin.url") or recorded
+    return recorded
+
+
+def read_registry(layout: Layout) -> list[dict]:
+    try:
+        entries = json.loads(layout.registry.read_text())
+    except FileNotFoundError:
+        return []
+    if not isinstance(entries, list):
+        raise Problem(f"{layout.registry} does not hold a list")
+    return entries
+
+
+def row_from_entry(entry: Mapping) -> Row:
+    path = entry["path"]
+    storage = Path(entry.get("storagePath") or Path(path) / ".gitnexus")
+    return Row(
+        name=entry["name"],
+        path=os.path.realpath(path),
+        exists=os.path.isdir(path),
+        storage_version=storage_version(storage),
+        repo=repo_from_url(origin_url(path, entry.get("remoteUrl"))),
+    )
+
+
+def read_json(path: Path) -> dict | None:
+    try:
+        loaded = json.loads(path.read_text())
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except json.JSONDecodeError as error:
+        raise Problem(f"{path} is not valid JSON: {error}") from error
+    return loaded if isinstance(loaded, dict) else None
+
+
+def package_version(package_root: Path) -> str | None:
+    package = read_json(package_root / "package.json")
+    return package.get("version") if package else None
+
+
+def engine_version(layout: Layout) -> str | None:
+    return package_version(layout.current / "node_modules/@ladybugdb/core")
+
+
+def readable_storage(layout: Layout) -> frozenset[int]:
+    engine = engine_version(layout)
+    readable = READABLE_STORAGE.get(engine or "")
+    if readable is None:
+        raise Problem(
+            f"no measured storage versions for engine {engine!r} under {layout.current}; "
+            "open real databases with it and add it to READABLE_STORAGE"
+        )
+    return readable
+
+
+def managed_repos(layout: Layout) -> frozenset[str]:
+    found = set(MANAGED_REPOS)
+    if layout.index_root.is_dir():
+        found.update(child.name for child in layout.index_root.iterdir() if child.is_dir())
+    return frozenset(found)
+
+
+def read_rows(layout: Layout) -> tuple[list[Row], dict[str, dict]]:
+    """Return every row, and the raw entries keyed by real path."""
+    entries = read_registry(layout)
+    rows = [row_from_entry(entry) for entry in entries]
+    return rows, {row.path: entry for row, entry in zip(rows, entries)}
+
+
+def current_plan(layout: Layout) -> tuple[list[Row], list[tuple[Row, str]], dict[str, dict]]:
+    """Return every row, the prune plan, and the raw entries keyed by real path."""
+    rows, by_path = read_rows(layout)
+    managed = managed_repos(layout)
+    plan = plan_prune(
+        rows,
+        managed=managed,
+        canonical=frozenset(layout.canonical_path(repo) for repo in managed),
+        readable=readable_storage(layout),
+    )
+    return rows, plan, by_path
+
+
+UNREGISTER_SCRIPT = """
+const { unregisterRepo } = await import(process.env.GITNEXUS_INDEX_REPO_MANAGER);
+for (const repoPath of JSON.parse(process.env.GITNEXUS_INDEX_PATHS)) {
+  await unregisterRepo(repoPath);
+}
+"""
+
+
+def unregister(layout: Layout, entries: Sequence[Mapping]) -> None:
+    """Remove registry rows through the pinned build, which holds the registry lock while writing."""
+    if not entries:
+        return
+    environment = dict(os.environ)
+    environment["GITNEXUS_INDEX_REPO_MANAGER"] = layout.repo_manager.resolve().as_uri()
+    environment["GITNEXUS_INDEX_PATHS"] = json.dumps([entry["path"] for entry in entries])
+    result = subprocess.run(
+        [layout.node, "--input-type=module", "-e", UNREGISTER_SCRIPT],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env=environment,
+    )
+    if result.returncode != 0:
+        raise Problem(f"unregistering rows failed: {result.stderr.strip()[-600:]}")
+
+
+def record_pruned(layout: Layout, pruned: Sequence[tuple[Row, str, Mapping]]) -> Path:
+    """Append what was removed, so a row can come back with `gitnexus index <path>`."""
+    ledger = layout.gitnexus_home / "gitnexus-index-pruned.jsonl"
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    with open(ledger, "a") as handle:
+        for row, reason, entry in pruned:
+            record = {
+                "at": now,
+                "name": row.name,
+                "path": entry["path"],
+                "reason": reason,
+                "storageVersion": row.storage_version,
+                "indexedAt": entry.get("indexedAt"),
+                "lastCommit": entry.get("lastCommit"),
+            }
+            handle.write(json.dumps(record) + "\n")
+    return ledger
+
+
+def prune(layout: Layout, plan: Sequence[tuple[Row, str]], by_path: Mapping[str, Mapping]) -> None:
+    pruned = [(row, reason, by_path[row.path]) for row, reason in plan]
+    unregister(layout, [entry for _row, _reason, entry in pruned])
+    if pruned:
+        ledger = record_pruned(layout, pruned)
+        print(f"removed {len(pruned)} registry rows; storage stays on disk; ledger: {ledger}")
+        print("bring one back with: gitnexus index <path>")
+
+
+@contextlib.contextmanager
+def refresh_lock(layout: Layout) -> Iterator[None]:
+    """Allow one refresh at a time. The kernel drops a flock when its holder dies, so none go stale."""
+    layout.gitnexus_home.mkdir(parents=True, exist_ok=True)
+    path = layout.gitnexus_home / "gitnexus-index.lock"
+    handle = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            holder = os.read(handle, 32).decode(errors="replace").strip() or "unknown"
+            raise TryLater(f"another refresh holds {path} (pid {holder})") from error
+        os.ftruncate(handle, 0)
+        os.lseek(handle, 0, os.SEEK_SET)
+        os.write(handle, str(os.getpid()).encode())
+        yield
+    finally:
+        os.close(handle)
+
+
+def check_load(max_load: float) -> float:
+    load = os.getloadavg()[0]
+    if load > max_load:
+        raise TryLater(f"load {load:.0f} exceeds {max_load:.0f}; a full index waits for a quieter host")
+    return load
+
+
+def default_branch(source: Path) -> str:
+    with contextlib.suppress(Problem):
+        short = run_git(source, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+        if short.startswith("origin/"):
+            return short[len("origin/") :]
+    return "main"
+
+
+def common_dir(path: Path) -> str:
+    return os.path.realpath(run_git(path, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+
+
+def worktree_locked(source: Path, worktree: Path) -> bool:
+    target = os.path.realpath(worktree)
+    current = None
+    for line in run_git(source, "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("worktree "):
+            current = os.path.realpath(line.split(" ", 1)[1])
+        elif current == target and (line == "locked" or line.startswith("locked ")):
+            return True
+    return False
+
+
+def ensure_worktree(source: Path, worktree: Path, commit: str) -> None:
+    """Put the index worktree at commit, detached and locked so worktree sweeps pass over it."""
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    if not worktree.exists():
+        run_git(
+            source, "worktree", "add", "--quiet", "--detach",
+            "--lock", "--reason", WORKTREE_LOCK_REASON, str(worktree), commit,
+        )  # fmt: skip
+        return
+    if common_dir(worktree) != common_dir(source):
+        raise Problem(f"{worktree} belongs to another repository than {source}")
+    if run_git(worktree, "status", "--porcelain"):
+        raise Problem(
+            f"{worktree} holds local changes; an index worktree carries no edits. "
+            "Move them out and restore it, then refresh again"
+        )
+    run_git(worktree, "checkout", "--quiet", "--detach", commit)
+    if not worktree_locked(source, worktree):
+        run_git(source, "worktree", "lock", "--reason", WORKTREE_LOCK_REASON, str(worktree))
+
+
+def analyze_command(
+    layout: Layout, repo: str, worktree: Path, branch: str, workers: int, write_block: bool
+) -> list[str]:
+    command = [
+        layout.node, str(layout.cli), "analyze",
+        "--name", repo,
+        "--default-branch", branch,
+        "--no-stats",
+        "--skip-skills",
+        "--workers", str(workers),
+        "--worker-timeout", str(WORKER_TIMEOUT_SECONDS),
+    ]  # fmt: skip
+    if not write_block:
+        command.append("--index-only")
+    command.append(str(worktree))
+    return command
+
+
+def verify_index(layout: Layout, repo: str, worktree: Path, commit: str, write_block: bool) -> list[str]:
+    """Return what is wrong with repo's index after a refresh; an empty list means healthy."""
+    matches = [entry for entry in read_registry(layout) if entry.get("name") == repo]
+    if len(matches) != 1:
+        return [f"expected one registry row named {repo}, found {len(matches)}"]
+    entry = matches[0]
+    row = row_from_entry(entry)
+    problems = []
+    if row.path != os.path.realpath(worktree):
+        problems.append(f"{repo} points at {row.path}, not {worktree}")
+    if row.storage_version not in readable_storage(layout):
+        problems.append(f"{repo} has storage version {row.storage_version}, which the pinned build cannot open")
+    if entry.get("lastCommit") != commit:
+        problems.append(f"{repo} records commit {entry.get('lastCommit')}, not {commit}")
+    if not write_block and run_git(worktree, "status", "--porcelain"):
+        problems.append(f"{worktree} has local changes after indexing")
+    return problems
+
+
+def refresh(layout: Layout, arguments: argparse.Namespace) -> int:
+    repo = arguments.repo
+    source = Path(arguments.source) if arguments.source else layout.source_root / repo
+    if not source.is_dir():
+        raise Problem(f"no checkout at {source}; pass --source")
+    worktree = layout.index_root / repo
+    with refresh_lock(layout):
+        load = check_load(arguments.max_load)
+        branch = arguments.default_branch or default_branch(source)
+        print(f"load {load:.0f}; fetching origin/{branch} in {source}", flush=True)
+        run_git(source, "fetch", "--quiet", "origin", f"+refs/heads/{branch}:refs/remotes/origin/{branch}")
+        commit = run_git(source, "rev-parse", f"refs/remotes/origin/{branch}")
+        ensure_worktree(source, worktree, commit)
+        print(f"{worktree} at {commit}", flush=True)
+
+        # The rows go first because a name with a second path fails at registration, after the
+        # whole pipeline has run.
+        rows, by_path = read_rows(layout)
+        ours = plan_prune(
+            [row for row in rows if repo in (row.name, row.repo)],
+            managed=frozenset({repo}),
+            canonical=frozenset({os.path.realpath(worktree)}),
+            readable=readable_storage(layout),
+        )
+        prune(layout, ours, by_path)
+
+        command = analyze_command(layout, repo, worktree, branch, arguments.workers, arguments.write_block)
+        print("running:", " ".join(command), flush=True)
+        started = time.monotonic()
+        result = subprocess.run(command, check=False)
+        minutes = (time.monotonic() - started) / 60
+        print(f"analyze exited {result.returncode} after {minutes:.1f} minutes", flush=True)
+        if result.returncode != 0:
+            raise Problem(f"analyze failed for {repo}; see its output above")
+        problems = verify_index(layout, repo, worktree, commit, arguments.write_block)
+        if problems:
+            raise Problem("; ".join(problems))
+    print(f"{repo} is indexed at {commit}")
+    return EXIT_OK
+
+
+def check_build(layout: Layout) -> list[Check]:
+    installed = package_version(layout.current / "node_modules/gitnexus")
+    manifest = read_json(layout.current / "package.json") or {}
+    pinned = manifest.get("dependencies", {}).get("gitnexus")
+    engine = engine_version(layout)
+    checks = [
+        Check(
+            "build",
+            installed is not None and installed == pinned,
+            f"{layout.current} -> {os.path.realpath(layout.current)}: gitnexus {installed}, pinned {pinned}",
+        )
+    ]
+    readable = READABLE_STORAGE.get(engine or "")
+    checks.append(
+        Check(
+            "engine",
+            readable is not None,
+            f"@ladybugdb/core {engine} opens storage versions {sorted(readable) if readable else 'unmeasured'}",
+        )
+    )
+    return checks
+
+
+def launch_config_check(layout: Layout, label: str, path: Path) -> Check:
+    name = f"launch:{label}"
+    config = read_json(path)
+    server = (config or {}).get("mcpServers", {}).get("gitnexus")
+    if not server:
+        return Check(name, True, f"{path} launches no gitnexus server")
+    words = [server.get("command") or "", *server.get("args", [])]
+    expected = os.path.realpath(layout.cli)
+    resolved = [word for word in words if os.path.realpath(os.path.expanduser(word)) == expected]
+    # A pinned versioned path would pass the realpath test until the pin moves, so name the symlink.
+    stable = any(word.startswith(str(layout.current)) for word in resolved)
+    detail = " ".join(str(word) for word in words)
+    return Check(name, bool(resolved) and stable, f"{path}: {detail}")
+
+
+def path_checks(layout: Layout, search_path: str) -> list[Check]:
+    expected = os.path.realpath(layout.cli)
+    seen = set()
+    checks = []
+    for directory in search_path.split(os.pathsep):
+        candidate = os.path.join(directory, "gitnexus")
+        if directory in seen or not os.access(candidate, os.X_OK):
+            continue
+        seen.add(directory)
+        resolved = os.path.realpath(candidate)
+        checks.append(Check(f"path:{candidate}", resolved == expected, f"-> {resolved}"))
+    if not checks:
+        checks.append(Check("path", False, "no gitnexus on PATH"))
+    return checks
+
+
+def hook_check(layout: Layout) -> Check:
+    hook = layout.home / ".claude/hooks/gitnexus/gitnexus-hook.cjs"
+    if not hook.exists():
+        return Check("hook", True, f"{hook} is absent")
+    return Check("hook", layout.current.name in hook.read_text(), str(hook))
+
+
+def registry_checks(rows: Sequence[Row], plan: Sequence[tuple[Row, str]]) -> list[Check]:
+    checks = [
+        Check(
+            f"row:{row.name}",
+            False,
+            f"{reason}: {row.path} (storage {row.storage_version}); doctor --fix removes it",
+        )
+        for row, reason in plan
+    ]
+    removing = {row.path for row, _reason in plan}
+    duplicates = duplicate_names(row for row in rows if row.path not in removing)
+    checks.append(
+        Check(
+            "names",
+            not duplicates,
+            f"duplicates: {', '.join(duplicates)}" if duplicates else f"{len(rows) - len(removing)} rows, each named once",
+        )
+    )
+    return checks
+
+
+def behind_count(worktree: Path) -> str:
+    branch = default_branch(worktree)
+    count = run_git(worktree, "rev-list", "--count", f"HEAD..refs/remotes/origin/{branch}")
+    return f"{count} commits behind origin/{branch} as of the last fetch"
+
+
+def index_checks(layout: Layout, rows: Sequence[Row]) -> list[Check]:
+    readable = READABLE_STORAGE.get(engine_version(layout) or "", frozenset())
+    checks = []
+    for repo in sorted(managed_repos(layout)):
+        canonical = layout.canonical_path(repo)
+        row = next((row for row in rows if row.path == canonical and row.name == repo), None)
+        if row is None:
+            checks.append(Check(f"index:{repo}", False, f"no row at {canonical}; run gitnexus-index refresh {repo}"))
+        elif row.storage_version not in readable:
+            checks.append(
+                Check(f"index:{repo}", False, f"storage version {row.storage_version} at {canonical}; run refresh")
+            )
+        else:
+            checks.append(Check(f"index:{repo}", True, f"{canonical}, {behind_count(Path(canonical))}"))
+    return checks
+
+
+class McpClient:
+    """A small stdio JSON-RPC client that speaks newline-delimited MCP to one server."""
+
+    def __init__(self, command: Sequence[str], env: Mapping[str, str], cwd: Path, timeout: float):
+        self.timeout = timeout
+        self.next_id = 0
+        self.messages: queue.Queue[dict | None] = queue.Queue()
+        self.process = subprocess.Popen(
+            list(command),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=dict(env),
+            cwd=cwd,
+        )
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self) -> None:
+        assert self.process.stdout is not None
+        for line in self.process.stdout:
+            with contextlib.suppress(json.JSONDecodeError):
+                self.messages.put(json.loads(line))
+        self.messages.put(None)
+
+    def _send(self, message: Mapping) -> None:
+        assert self.process.stdin is not None
+        self.process.stdin.write(json.dumps({"jsonrpc": "2.0", **message}) + "\n")
+        self.process.stdin.flush()
+
+    def notify(self, method: str, params: Mapping | None = None) -> None:
+        self._send({"method": method, "params": params or {}})
+
+    def request(self, method: str, params: Mapping | None = None) -> dict:
+        self.next_id += 1
+        try:
+            self._send({"id": self.next_id, "method": method, "params": params or {}})
+        except OSError as error:
+            raise Problem(f"the MCP server exited during {method}") from error
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                message = self.messages.get(timeout=max(0.0, deadline - time.monotonic()))
+            except queue.Empty as error:
+                raise Problem(f"the MCP server did not answer {method} in {self.timeout:.0f}s") from error
+            if message is None:
+                raise Problem(f"the MCP server exited during {method}")
+            if message.get("id") == self.next_id:
+                return message
+
+    def close(self) -> None:
+        with contextlib.suppress(OSError, ValueError):
+            if self.process.stdin:
+                self.process.stdin.close()
+        try:
+            self.process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=10)
+
+
+def tool_text(response: Mapping) -> tuple[bool, str]:
+    """Return whether a tools/call response succeeded, and its text."""
+    if "error" in response:
+        return False, json.dumps(response["error"])
+    result = response.get("result", {})
+    text = "\n".join(part.get("text", "") for part in result.get("content", []))
+    return not result.get("isError", False), text
+
+
+def probe_healthy(succeeded: bool, text: str) -> bool:
+    """Return whether the server opened the index. Missing the probe symbol proves that it did."""
+    return not PROBE_FAILURE.search(text) and (succeeded or "not found" in text.lower())
+
+
+def probe_checks(layout: Layout, rows: Sequence[Row], timeout: float = PROBE_TIMEOUT_SECONDS) -> list[Check]:
+    """Start the exact server ~/.mcp.json names and ask it to open every registered index."""
+    config = read_json(layout.home / ".mcp.json") or {}
+    server = config.get("mcpServers", {}).get("gitnexus")
+    if not server:
+        return [Check("probe", False, "~/.mcp.json names no gitnexus server")]
+    client = McpClient(
+        [server["command"], *server.get("args", [])],
+        {**os.environ, **server.get("env", {})},
+        layout.home,
+        timeout,
+    )
+    checks = []
+    try:
+        started = client.request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "gitnexus-index", "version": "1"},
+            },
+        )
+        if "error" in started:
+            return [Check("probe", False, f"initialize failed: {started['error']}")]
+        client.notify("notifications/initialized")
+        for row in rows:
+            response = client.request(
+                "tools/call",
+                {
+                    "name": "impact",
+                    "arguments": {"target": PROBE_SYMBOL, "direction": "upstream", "repo": row.name},
+                },
+            )
+            succeeded, text = tool_text(response)
+            checks.append(Check(f"probe:{row.name}", probe_healthy(succeeded, text), " ".join(text.split())[:160]))
+    except Problem as error:
+        checks.append(Check("probe", False, str(error)))
+    finally:
+        client.close()
+    return checks
+
+
+def doctor(layout: Layout, arguments: argparse.Namespace, search_path: str) -> int:
+    if arguments.fix:
+        _rows, plan, by_path = current_plan(layout)
+        prune(layout, plan, by_path)
+
+    checks = check_build(layout)
+    checks.append(launch_config_check(layout, "claude", layout.home / ".mcp.json"))
+    checks.append(launch_config_check(layout, "cursor", layout.home / ".cursor/mcp.json"))
+    checks.extend(path_checks(layout, search_path))
+    checks.append(hook_check(layout))
+    try:
+        rows, plan, _by_path = current_plan(layout)
+    except Problem as error:
+        checks.append(Check("registry", False, str(error)))
+    else:
+        checks.extend(registry_checks(rows, plan))
+        checks.extend(index_checks(layout, rows))
+        if arguments.probe:
+            checks.extend(probe_checks(layout, rows))
+
+    for check in checks:
+        print(f"{'ok  ' if check.ok else 'FAIL'} {check.name}: {check.detail}")
+    failed = sum(1 for check in checks if not check.ok)
+    print(f"{failed} problems" if failed else "healthy")
+    return EXIT_PROBLEM if failed else EXIT_OK
+
+
+def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="gitnexus-index", description=__doc__.splitlines()[0])
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    refresh_parser = commands.add_parser("refresh", help="rebuild one repository's canonical index")
+    refresh_parser.add_argument("repo")
+    refresh_parser.add_argument("--source", help="checkout that owns the worktree (default: <source root>/<repo>)")
+    refresh_parser.add_argument("--default-branch", help="branch to index (default: origin/HEAD, else main)")
+    refresh_parser.add_argument("--max-load", type=float, default=DEFAULT_MAX_LOAD)
+    refresh_parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    refresh_parser.add_argument(
+        "--write-block",
+        action="store_true",
+        help="also regenerate the CLAUDE.md and AGENTS.md block, leaving the diff in the index worktree",
+    )
+
+    doctor_parser = commands.add_parser("doctor", help="check the build, its launchers and the registry")
+    doctor_parser.add_argument("--fix", action="store_true", help="remove dead registry rows; storage stays on disk")
+    doctor_parser.add_argument("--probe", action="store_true", help="ask the configured MCP server to open every index")
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    arguments = parse_arguments(sys.argv[1:] if argv is None else argv)
+    layout = Layout.from_env(os.environ)
+    try:
+        if arguments.command == "refresh":
+            return refresh(layout, arguments)
+        return doctor(layout, arguments, os.environ.get("PATH", ""))
+    except TryLater as error:
+        print(f"try later: {error}", file=sys.stderr)
+        return EXIT_TRY_LATER
+    except Problem as error:
+        print(f"problem: {error}", file=sys.stderr)
+        return EXIT_PROBLEM
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -13,6 +13,14 @@ if echo "$command" | grep -qE '(^|[;&|()[:space:]])((bunx|npx)([[:space:]]+-y)?[
   exit 0
 fi
 
+# Block floating GitNexus runners and self-update. Each release bundles a database engine, so a
+# newer build writes indexes the machine's pinned build cannot open.
+if echo "$command" | grep -qE '(^|[;&|()[:space:]])(bunx|npx|pnpm[[:space:]]+(--[^[:space:]]+[[:space:]]+)*dlx|yarn[[:space:]]+dlx)([[:space:]]+-[^[:space:]]+)*[[:space:]]+gitnexus(@[^[:space:]]+)?([[:space:]]|$)' \
+  || echo "$command" | grep -qE '(^|[;&|()[:space:]/])gitnexus[[:space:]]+update([[:space:]]|$)'; then
+  echo '{"decision": "block", "reason": "Use the pinned GitNexus build: gitnexus on PATH, and gitnexus-index refresh <repo> to rebuild an index. A floating runner or gitnexus update moves off the pin and writes databases the pinned build cannot open. To move the pin, follow the docstring in ~/.claude/hooks/gitnexus/gitnexus-index."}'
+  exit 0
+fi
+
 # Check for npm usage
 if echo "$command" | grep -qE '\bnpm\s+(install|i|add|remove|rm|uninstall|run|start|test|build|ci|update|upgrade|init|create)\b'; then
   echo '{"decision": "block", "reason": "Use bun instead of npm. Replace: npm install → bun install, npm run → bun run, npm add → bun add"}'
